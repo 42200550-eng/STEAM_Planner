@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2000 1200" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
+  <title id="title">URLAB Horizon Lines Pattern</title>
+  <desc id="desc">Horizon arc pattern with base radius 1600, spacing 220, stroke 1.5 and opacity 8 percent.</desc>
+  <rect width="2000" height="1200" fill="#FFFFFF"/>
+  <g fill="none" stroke="#0B132B" stroke-width="1.5" stroke-linecap="round" opacity="0.08">
+    <path d="M-600 980 A1600 1600 0 0 1 2600 980"/>
+    <path d="M-820 980 A1820 1820 0 0 1 2820 980"/>
+    <path d="M-1040 980 A2040 2040 0 0 1 3040 980"/>
+    <path d="M-1260 980 A2260 2260 0 0 1 3260 980"/>
+  </g>
+</svg>

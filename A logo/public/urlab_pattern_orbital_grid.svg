@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
+  <title id="title">URLAB Orbital Grid Pattern</title>
+  <desc id="desc">Orbital grid pattern with radius 64, spacing 128, stroke 1, opacity 8 percent.</desc>
+  <rect width="512" height="512" fill="#FFFFFF"/>
+  <g fill="none" stroke="#0B132B" stroke-width="1" opacity="0.08">
+    <circle cx="64" cy="64" r="64"/>
+    <circle cx="192" cy="64" r="64"/>
+    <circle cx="320" cy="64" r="64"/>
+    <circle cx="448" cy="64" r="64"/>
+    <circle cx="64" cy="192" r="64"/>
+    <circle cx="192" cy="192" r="64"/>
+    <circle cx="320" cy="192" r="64"/>
+    <circle cx="448" cy="192" r="64"/>
+    <circle cx="64" cy="320" r="64"/>
+    <circle cx="192" cy="320" r="64"/>
+    <circle cx="320" cy="320" r="64"/>
+    <circle cx="448" cy="320" r="64"/>
+    <circle cx="64" cy="448" r="64"/>
+    <circle cx="192" cy="448" r="64"/>
+    <circle cx="320" cy="448" r="64"/>
+    <circle cx="448" cy="448" r="64"/>
+  </g>
+</svg>

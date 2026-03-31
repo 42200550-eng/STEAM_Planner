@@ -1,0 +1,930 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>URLAB - Empowering the Autonomous Future</title>
+  <meta name="description" content="Premium landing page for URLAB, a UAV and Robotics Laboratory." />
+  <meta name="theme-color" content="#040507" />
+  <meta name="color-scheme" content="dark" />
+  <link rel="icon" type="image/svg+xml" href="urlab_logo_icon_official.svg" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            bg: '#040507',
+            panel: '#0B0D12',
+            panelSoft: '#121621',
+            ink: '#F5F7FA',
+            sub: '#A7B0C0',
+            accent: '#3B82F6'
+          },
+          boxShadow: {
+            glow: '0 0 0 1px rgba(108,166,255,.22), 0 24px 80px rgba(7,22,56,.45)'
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    :root {
+      --phi: 1.618;
+      --space-8: 8px;
+      --space-13: 13px;
+      --space-21: 21px;
+      --space-34: 34px;
+      --space-55: 55px;
+      --space-89: 89px;
+      --container-inline: clamp(14px, 4vw, 32px);
+      --nav-top: clamp(10px, 2vw, 20px);
+      --nav-height: clamp(60px, 8vw, 72px);
+      --brand-icon-h: clamp(16px, 2.4vw, 24px);
+      --brand-wordmark-h: clamp(12px, 2vw, 18px);
+      --hero-content-max: clamp(320px, 86vw, 720px);
+      --hero-title-size: clamp(42px, 9vw, 89px);
+      --hero-kicker-size: clamp(11px, 1.5vw, 13px);
+      --hero-btn-height: clamp(44px, 6.4vw, 48px);
+      --hero-btn-px: clamp(20px, 4.4vw, 28px);
+    }
+
+    html, body {
+      background: #040507;
+      color: #f5f7fa;
+      font-family: Inter, system-ui, sans-serif;
+      scroll-behavior: smooth;
+      line-height: 1.6;
+    }
+
+    .grain {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.05;
+      background-image: radial-gradient(circle at 1px 1px, #fff 1px, transparent 0);
+      background-size: 4px 4px;
+      z-index: 1;
+    }
+
+    .hero-video::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 78% 42%, rgba(59, 130, 246, 0.08), transparent 44%),
+        linear-gradient(to bottom, rgba(4,5,7,.7), rgba(4,5,7,.92));
+    }
+
+    .hero-video video {
+      filter: blur(8px) brightness(0.62);
+      transform: scale(1.03);
+    }
+
+    .hero-title {
+      text-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+      text-wrap: balance;
+      max-width: var(--hero-content-max);
+      font-size: var(--hero-title-size);
+      margin-inline: auto;
+      line-height: 1.1;
+    }
+
+    .hero-sub {
+      text-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+    }
+
+    .nav-brand {
+      gap: 8px;
+      padding: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .nav-brand-icon {
+      width: auto;
+      height: var(--brand-icon-h);
+      filter: brightness(0) invert(1);
+      opacity: 0.95;
+    }
+
+    .nav-brand-wordmark {
+      width: auto;
+      height: var(--brand-wordmark-h);
+      filter: brightness(0) invert(1);
+      opacity: 0.95;
+      max-width: 110px;
+    }
+
+    .site-nav-shell {
+      top: var(--nav-top) !important;
+      height: var(--nav-height) !important;
+      padding-inline: var(--container-inline) !important;
+    }
+
+    .golden-shell {
+      position: relative;
+      z-index: 20;
+      width: 92%;
+      max-width: 1280px;
+      min-height: 100vh;
+      margin: 0 auto;
+      padding-top: 22vh;
+      padding-bottom: 23vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+    }
+
+    .golden-copy {
+      width: min(100%, var(--hero-content-max));
+      margin: 0 auto;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hero-stack {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 62vh;
+      width: 100%;
+    }
+
+    @media (max-width: 1024px) {
+      .golden-shell {
+        width: 94%;
+        padding-top: 14vh;
+        padding-bottom: 20vh;
+      }
+
+      .hero-stack {
+        min-height: 60vh;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .golden-shell {
+        padding-top: 13vh;
+        padding-bottom: 18vh;
+      }
+
+      .golden-copy {
+        width: min(100%, 94vw);
+      }
+
+      .hero-title {
+        max-width: 94vw;
+      }
+
+      .scroll-indicator {
+        margin-top: 48px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .site-nav-shell {
+        left: 10px !important;
+        right: 10px !important;
+        width: auto !important;
+        transform: none !important;
+      }
+
+      .site-nav-shell .nav-brand-icon {
+        height: 16px;
+      }
+
+      .site-nav-shell .nav-brand-wordmark {
+        height: 12px;
+        max-width: 92px;
+      }
+
+      .site-nav-shell .menu-mobile-btn {
+        padding: 8px 12px;
+        font-size: 11px;
+        letter-spacing: 0.08em;
+        white-space: nowrap;
+      }
+    }
+
+    .hero-kicker {
+      margin: 0 auto;
+      max-width: 34ch;
+      font-size: var(--hero-kicker-size);
+    }
+
+    .hero-actions {
+      width: 100%;
+      max-width: 420px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 12px;
+    }
+
+    .hero-cta {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      height: var(--hero-btn-height);
+      padding-inline: var(--hero-btn-px);
+      border-radius: 24px;
+      font-size: 16px;
+      font-weight: 600;
+      transition: transform 200ms ease, background-color 200ms ease, color 200ms ease;
+    }
+
+    .hero-cta-primary {
+      background: #fff;
+      color: #0B132B;
+    }
+
+    .hero-cta-secondary {
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #F5F7FA;
+    }
+
+    .scroll-indicator {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 10px;
+      color: rgba(255, 255, 255, 0.42);
+      animation: pulse 2.2s ease-in-out infinite;
+    }
+
+    .scroll-indicator::after {
+      content: '';
+      display: block;
+      width: 1px;
+      height: 26px;
+      background: linear-gradient(to bottom, rgba(255, 255, 255, 0.55), rgba(255, 255, 255, 0));
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: .4; transform: translateY(0); }
+      50% { opacity: 1; transform: translateY(-4px); }
+    }
+
+    .hide-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+
+    .hide-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+
+    .project-card {
+      transition: transform 260ms ease, border-color 260ms ease;
+    }
+
+    .project-card img {
+      transition: transform 320ms ease;
+    }
+
+    .project-card:hover {
+      transform: translateY(-4px) scale(1.01);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .project-card:hover img {
+      transform: scale(1.03);
+    }
+
+    .footer-watermark {
+      position: absolute;
+      right: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: clamp(120px, 16vw, 220px);
+      opacity: 0.07;
+      filter: brightness(0) invert(1);
+      pointer-events: none;
+    }
+
+    .footer-brand-logo {
+      width: auto;
+      height: 22px;
+      filter: brightness(0) invert(1);
+      opacity: 0.95;
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      html, body {
+        scroll-behavior: auto;
+      }
+
+      .scroll-indicator {
+        animation: none;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div class="grain" aria-hidden="true"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+
+  <script type="text/babel">
+    const { useEffect, useRef, useState } = React;
+
+    function TopNav({ t, lang, setLang }) {
+      const [isScrolled, setIsScrolled] = useState(false);
+      const [menuOpen, setMenuOpen] = useState(false);
+      const [active, setActive] = useState('axis');
+
+      useEffect(() => {
+        const onScroll = () => {
+          setIsScrolled(window.scrollY > 24);
+        };
+
+        const sections = ['axis', 'principles', 'tech', 'projects', 'impact', 'contact']
+          .map((id) => document.getElementById(id))
+          .filter(Boolean);
+
+        const observer = new IntersectionObserver(
+          (entries) => {
+            entries.forEach((entry) => {
+              if (entry.isIntersecting) {
+                setActive(entry.target.id);
+              }
+            });
+          },
+          { rootMargin: '-45% 0px -45% 0px', threshold: 0.01 }
+        );
+
+        sections.forEach((section) => observer.observe(section));
+
+        onScroll();
+        window.addEventListener('scroll', onScroll, { passive: true });
+
+        return () => {
+          window.removeEventListener('scroll', onScroll);
+          observer.disconnect();
+        };
+      }, []);
+
+      const linkClass = (id) =>
+        `whitespace-nowrap border-b pb-0.5 leading-none transition-all duration-200 ${active === id ? 'border-white/70 text-white' : 'border-transparent text-sub hover:border-white/40 hover:text-white'}`;
+
+      const closeMenu = () => setMenuOpen(false);
+
+      return (
+        <header className={`site-nav-shell fixed left-1/2 top-4 z-50 h-[56px] w-[92%] max-w-[1400px] -translate-x-1/2 rounded-[28px] border px-4 py-0 backdrop-blur-md transition-all duration-300 sm:px-6 md:top-5 md:h-[64px] md:px-8 ${isScrolled ? 'border-white/20 bg-black/68 shadow-[0_10px_40px_rgba(0,0,0,0.35)]' : 'border-white/10 bg-black/46'}`}>
+          <div className="flex h-full items-center justify-between">
+          <a href="#hero" className="nav-brand flex min-w-0 items-center" onClick={closeMenu}>
+            <img src="urlab_logo_icon_official.svg" alt="URLAB icon" className="nav-brand-icon shrink-0" />
+            <img src="urlab_logo_secondary_official.svg" alt="URLAB wordmark" className="nav-brand-wordmark shrink-0" />
+          </a>
+          <div className="hidden items-center gap-2 md:flex lg:gap-3">
+            <nav className="flex items-center gap-4 text-xs font-medium lg:gap-6 lg:text-sm">
+              <a href="#axis" className={linkClass('axis')}>{t.nav.axis}</a>
+              <a href="#principles" className={linkClass('principles')}>{t.nav.principles}</a>
+              <a href="#tech" className={linkClass('tech')}>{t.nav.tech}</a>
+              <a href="#projects" className={linkClass('projects')}>{t.nav.projects}</a>
+              <a href="#impact" className={linkClass('impact')}>{t.nav.impact}</a>
+              <a href="#contact" className={linkClass('contact')}>{t.nav.contact}</a>
+            </nav>
+            <div className="inline-flex items-center rounded-full border border-white/15 bg-black/30 p-1">
+              <button
+                type="button"
+                className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors ${lang === 'en' ? 'bg-white text-[#0B132B]' : 'text-sub hover:text-white'}`}
+                onClick={() => setLang('en')}
+                aria-pressed={lang === 'en'}
+              >
+                EN
+              </button>
+              <button
+                type="button"
+                className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors ${lang === 'vi' ? 'bg-white text-[#0B132B]' : 'text-sub hover:text-white'}`}
+                onClick={() => setLang('vi')}
+                aria-pressed={lang === 'vi'}
+              >
+                VI
+              </button>
+            </div>
+          </div>
+          <button
+            className="menu-mobile-btn shrink-0 rounded-full border border-white/15 px-4 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-ink md:hidden"
+            aria-expanded={menuOpen}
+            aria-label="Toggle navigation"
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            {t.nav.menu}
+          </button>
+          </div>
+
+          {menuOpen && (
+            <button
+              type="button"
+              className="fixed inset-0 -z-10 bg-black/55 backdrop-blur-[2px] md:hidden"
+              aria-label="Close menu backdrop"
+              onClick={closeMenu}
+            />
+          )}
+
+          {menuOpen && (
+            <nav className="absolute left-0 right-0 top-[calc(100%+8px)] z-[60] mx-1 grid gap-2 rounded-2xl border border-white/15 bg-[#0B0D12] p-3 shadow-[0_18px_60px_rgba(0,0,0,0.8)] md:hidden">
+              <a href="#axis" className="rounded-lg px-3 py-2 text-sm text-sub hover:bg-white/5 hover:text-white" onClick={closeMenu}>{t.nav.axis}</a>
+              <a href="#principles" className="rounded-lg px-3 py-2 text-sm text-sub hover:bg-white/5 hover:text-white" onClick={closeMenu}>{t.nav.principles}</a>
+              <a href="#tech" className="rounded-lg px-3 py-2 text-sm text-sub hover:bg-white/5 hover:text-white" onClick={closeMenu}>{t.nav.tech}</a>
+              <a href="#projects" className="rounded-lg px-3 py-2 text-sm text-sub hover:bg-white/5 hover:text-white" onClick={closeMenu}>{t.nav.projects}</a>
+              <a href="#impact" className="rounded-lg px-3 py-2 text-sm text-sub hover:bg-white/5 hover:text-white" onClick={closeMenu}>{t.nav.impact}</a>
+              <a href="#contact" className="rounded-lg px-3 py-2 text-sm text-sub hover:bg-white/5 hover:text-white" onClick={closeMenu}>{t.nav.contact}</a>
+              <div className="mt-2 inline-flex items-center justify-center rounded-full border border-white/15 bg-black/40 p-1">
+                <button
+                  type="button"
+                  className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors ${lang === 'en' ? 'bg-white text-[#0B132B]' : 'text-sub hover:text-white'}`}
+                  onClick={() => setLang('en')}
+                  aria-pressed={lang === 'en'}
+                >
+                  EN
+                </button>
+                <button
+                  type="button"
+                  className={`rounded-full px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] transition-colors ${lang === 'vi' ? 'bg-white text-[#0B132B]' : 'text-sub hover:text-white'}`}
+                  onClick={() => setLang('vi')}
+                  aria-pressed={lang === 'vi'}
+                >
+                  VI
+                </button>
+              </div>
+            </nav>
+          )}
+
+        </header>
+      );
+    }
+
+    function HeroSection({ t }) {
+      return (
+        <section id="hero" className="relative min-h-screen overflow-hidden">
+          <div className="hero-video absolute inset-0">
+            <video
+              className="h-full w-full object-cover"
+              autoPlay
+              muted
+              loop
+              playsInline
+              poster="https://images.unsplash.com/photo-1473968512647-3e447244af8f?auto=format&fit=crop&w=2000&q=80"
+            >
+              <source src="https://cdn.coverr.co/videos/coverr-drone-flight-over-city-1579/1080p.mp4" type="video/mp4" />
+            </video>
+          </div>
+
+          <div className="golden-shell">
+            <div className="hero-stack">
+              <div className="golden-copy">
+                <p className="hero-kicker font-semibold uppercase tracking-[0.24em] text-sub">{t.hero.kicker}</p>
+                <h1 className="hero-title mt-[21px] text-center font-black tracking-[-0.025em] text-ink">
+                  {t.hero.title}
+                </h1>
+                <div className="hero-kicker hero-sub mt-[34px] mx-auto flex flex-wrap items-center justify-center gap-[21px] text-base text-sub">
+                  {t.hero.tags.map((tag) => (
+                    <span key={tag}>{tag}</span>
+                  ))}
+                </div>
+
+                <div className="hero-actions mt-[55px] mx-auto flex flex-wrap justify-center gap-[21px]">
+                  <a href="#projects" className="hero-cta hero-cta-primary w-full hover:-translate-y-0.5 sm:w-auto">{t.hero.ctaPrimary}</a>
+                  <a href="#tech" className="hero-cta hero-cta-secondary w-full hover:bg-white/10 sm:w-auto">{t.hero.ctaSecondary}</a>
+                </div>
+              </div>
+
+              <a href="#axis" className="scroll-indicator mt-[89px] text-[11px] uppercase tracking-[0.2em]">
+                {t.hero.scroll}
+              </a>
+            </div>
+          </div>
+        </section>
+      );
+    }
+
+    function AxisCard({ title, copy, image }) {
+      return (
+        <article className="axis-card rounded-3xl border border-white/10 bg-panelSoft/70 p-6 md:p-8">
+          <div className="mb-5 overflow-hidden rounded-2xl border border-white/10">
+            <div className="aspect-[4/3]">
+              <img src={image} alt={title} loading="lazy" className="h-full w-full object-cover" />
+            </div>
+          </div>
+          <p className="text-xs uppercase tracking-[0.22em] text-accent/90">{title}</p>
+          <h3 className="mt-3 text-2xl font-bold tracking-tight text-ink md:text-[40px] md:leading-[1.3]">{title}</h3>
+          <p className="mt-3 text-sub">{copy}</p>
+        </article>
+      );
+    }
+
+    function TriAxisSection({ t }) {
+      return (
+        <section id="axis" className="mx-auto w-[92%] max-w-[1400px] py-24 md:py-32">
+          <div className="mb-12 space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sub">{t.axis.kicker}</p>
+            {t.axis.title && (
+              <h2 className="max-w-4xl text-4xl font-black tracking-[-0.02em] md:text-[64px] md:leading-[1.2]">
+                {t.axis.title}
+              </h2>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
+            <AxisCard
+              title={t.axis.intelligence.title}
+              copy={t.axis.intelligence.copy}
+              image="https://images.unsplash.com/photo-1581092580497-e0d23cbdf1dc?auto=format&fit=crop&w=1400&q=80"
+            />
+            <AxisCard
+              title={t.axis.perception.title}
+              copy={t.axis.perception.copy}
+              image="https://images.unsplash.com/photo-1473968512647-3e447244af8f?auto=format&fit=crop&w=1400&q=80"
+            />
+            <AxisCard
+              title={t.axis.autonomy.title}
+              copy={t.axis.autonomy.copy}
+              image="https://images.unsplash.com/photo-1581092921461-eab62e97a780?auto=format&fit=crop&w=1400&q=80"
+            />
+          </div>
+        </section>
+      );
+    }
+
+    function PrinciplesSection({ t }) {
+      return (
+        <section id="principles" className="mx-auto w-[92%] max-w-[1400px] py-6 md:py-10">
+          <div className="mb-8 space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sub">{t.principles.kicker}</p>
+          </div>
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
+            {t.principles.items.map((item) => (
+              <article key={item} className="principle-item rounded-2xl border border-white/10 bg-panel/60 px-4 py-6 text-center text-base font-semibold text-ink md:text-lg">
+                {item}
+              </article>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    function TechnologySection({ t }) {
+      return (
+        <section id="tech" className="mx-auto w-[92%] max-w-[1400px] py-8 md:py-12">
+          <div className="mb-10 space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sub">{t.tech.kicker}</p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
+            {t.tech.items.map((item) => (
+              <article key={item} className="tech-item rounded-2xl border border-white/10 bg-panel/70 p-5">
+                <h3 className="text-base font-semibold tracking-tight text-ink md:text-lg">{item}</h3>
+              </article>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    function ProjectCard({ title, summary }) {
+      return (
+        <article className="project-card rounded-3xl border border-white/10 bg-panel p-5 md:p-6">
+          <h3 className="text-2xl font-bold tracking-tight md:text-[40px] md:leading-[1.3]">{title}</h3>
+          <p className="mt-3 text-sm text-sub md:text-base">{summary}</p>
+        </article>
+      );
+    }
+
+    function ProjectsSection({ t }) {
+      return (
+        <section id="projects" className="mx-auto w-[92%] max-w-[1400px] py-14 md:py-20">
+          <div className="mb-10 flex flex-wrap items-end justify-between gap-4">
+            <div className="space-y-4">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sub">{t.projects.kicker}</p>
+              {t.projects.title && (
+                <h2 className="text-4xl font-black tracking-[-0.02em] md:text-[64px] md:leading-[1.2]">{t.projects.title}</h2>
+              )}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
+            <ProjectCard
+              title={t.projects.items[0].title}
+              summary={t.projects.items[0].summary}
+            />
+            <ProjectCard
+              title={t.projects.items[1].title}
+              summary={t.projects.items[1].summary}
+            />
+            <ProjectCard
+              title={t.projects.items[2].title}
+              summary={t.projects.items[2].summary}
+            />
+            <ProjectCard
+              title={t.projects.items[3].title}
+              summary={t.projects.items[3].summary}
+            />
+          </div>
+        </section>
+      );
+    }
+
+    function ImpactSection({ t }) {
+      return (
+        <section id="impact" className="mx-auto w-[92%] max-w-[1400px] py-8 md:py-12">
+          <div className="mb-8 space-y-4">
+            <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sub">{t.impact.kicker}</p>
+          </div>
+          <div className="grid grid-cols-1 gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-3 sm:grid-cols-2 lg:grid-cols-4">
+            {t.impact.items.map((item) => (
+              <div key={item} className="impact-item rounded-xl border border-white/10 bg-white/[0.02] px-4 py-4 text-center">
+                <p className="text-sm font-semibold tracking-[0.04em] text-ink">{item}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      );
+    }
+
+    function FooterSection({ t }) {
+      return (
+        <footer id="contact" className="relative mx-auto mt-20 w-[92%] max-w-[1400px] border-t border-white/10 py-10">
+          <img src="urlab_logo_icon_official.svg" alt="" aria-hidden="true" className="footer-watermark" />
+          <div className="grid grid-cols-1 items-start gap-8 md:grid-cols-2 md:gap-12">
+            <div className="space-y-2 md:max-w-[420px]">
+              <img src="urlab_logo_secondary_official.svg" alt="URLAB logo" className="footer-brand-logo" />
+              {t.footer.lines.map((line) => (
+                <p key={line} className="text-sm text-sub">{line}</p>
+              ))}
+            </div>
+            <div className="space-y-2 md:justify-self-end md:w-full md:max-w-[420px]">
+              <p className="text-xs uppercase tracking-[0.16em] text-sub/80">Contact</p>
+              <a href="mailto:urlab.tdtu@gmail.com" className="block text-sm text-sub hover:text-ink">urlab.tdtu@gmail.com</a>
+              <a href="tel:+84974399533" className="block text-sm text-sub hover:text-ink">+84 0974399533</a>
+              <p className="text-sm text-sub">
+                <span className="block">19 Nguyen Huu Tho Street, Tan Hung Ward</span>
+                <span className="block">Ho Chi Minh City, Viet Nam</span>
+              </p>
+            </div>
+          </div>
+        </footer>
+      );
+    }
+
+    function App() {
+      const rootRef = useRef(null);
+      const [lang, setLang] = useState(() => {
+        const storedLang = window.localStorage.getItem('urlab-lang');
+        if (storedLang === 'en' || storedLang === 'vi') {
+          return storedLang;
+        }
+        return navigator.language.toLowerCase().startsWith('vi') ? 'vi' : 'en';
+      });
+      const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+      const dictionary = {
+        en: {
+          nav: {
+            axis: 'Core Axes',
+            principles: 'Principles',
+            tech: 'Technology',
+            projects: 'Projects',
+            impact: 'Impact',
+            contact: 'Contact',
+            menu: 'Menu'
+          },
+          hero: {
+            kicker: 'UAV & Robotics Laboratory',
+            title: 'Building Autonomous Systems',
+            tags: ['Explore', 'Build', 'Autonomy'],
+            ctaPrimary: 'Research',
+            ctaSecondary: 'Projects',
+            scroll: 'Scroll to discover'
+          },
+          axis: {
+            kicker: 'Core Axes',
+            title: '',
+            intelligence: {
+              title: 'Intelligence',
+              copy: 'AI algorithms for perception and decision-making.'
+            },
+            perception: {
+              title: 'Perception',
+              copy: 'Computer vision and sensor fusion.'
+            },
+            autonomy: {
+              title: 'Autonomy',
+              copy: 'Control systems for autonomous robotics.'
+            }
+          },
+          principles: {
+            kicker: 'Principles',
+            items: ['Discipline', 'Responsibility', 'Innovation', 'Collaboration', 'Sustainability']
+          },
+          projects: {
+            kicker: 'Projects',
+            title: '',
+            items: [
+              {
+                title: 'Marine Surveillance',
+                summary: 'AI-powered UAV detecting rip currents.'
+              },
+              {
+                title: '3D Mapping',
+                summary: 'Autonomous LiDAR mapping with drones.'
+              },
+              {
+                title: 'Drone Logistics',
+                summary: 'Autonomous aerial delivery systems.'
+              },
+              {
+                title: 'Quadruped Robot',
+                summary: 'Legged robot for rough terrain.'
+              }
+            ]
+          },
+          tech: {
+            kicker: 'Technologies',
+            items: [
+              'Artificial Intelligence',
+              'Computer Vision',
+              'Autonomous Control',
+              'Embedded Systems',
+              'Aerial Robotics'
+            ]
+          },
+          impact: {
+            kicker: 'Impact',
+            items: ['Applied Research', 'Industry Collaboration', 'STEM Education', 'Open Innovation']
+          },
+          footer: {
+            lines: ['UAV & Robotics Laboratory', 'Ton Duc Thang University', 'Ho Chi Minh City, Vietnam']
+          }
+        },
+        vi: {
+          nav: {
+            axis: 'Trụ cột',
+            principles: 'Nguyên tắc',
+            tech: 'Công nghệ',
+            projects: 'Dự án',
+            impact: 'Tác động',
+            contact: 'Liên hệ',
+            menu: 'Menu'
+          },
+          hero: {
+            kicker: 'Phòng thí nghiệm UAV & Robotics',
+            title: 'Kiến tạo hệ thống tự hành',
+            tags: ['Khám phá', 'Kiến tạo', 'Tự chủ'],
+            ctaPrimary: 'Nghiên cứu',
+            ctaSecondary: 'Dự án',
+            scroll: 'Cuộn để khám phá'
+          },
+          axis: {
+            kicker: 'Trụ cột',
+            title: '',
+            intelligence: {
+              title: 'Trí tuệ',
+              copy: 'Thuật toán AI cho nhận thức và ra quyết định.'
+            },
+            perception: {
+              title: 'Cảm nhận',
+              copy: 'Thị giác máy tính, cảm biến và nhận thức môi trường.'
+            },
+            autonomy: {
+              title: 'Tự chủ',
+              copy: 'Điều khiển bay và hệ thống robot tự hành.'
+            }
+          },
+          principles: {
+            kicker: 'Nguyên tắc',
+            items: ['Kỷ luật', 'Trách nhiệm', 'Đổi mới', 'Hợp tác', 'Bền vững']
+          },
+          projects: {
+            kicker: 'Dự án',
+            title: '',
+            items: [
+              {
+                title: 'Giám sát biển',
+                summary: 'UAV phát hiện dòng chảy xa bờ bằng AI.'
+              },
+              {
+                title: '3D Mapping',
+                summary: 'Bản đồ 3D môi trường bằng UAV và LiDAR.'
+              },
+              {
+                title: 'Drone Logistics',
+                summary: 'Robot bay vận chuyển tự động.'
+              },
+              {
+                title: 'Quadruped Robot',
+                summary: 'Robot bốn chân cho địa hình phức tạp.'
+              }
+            ]
+          },
+          tech: {
+            kicker: 'Công nghệ',
+            items: [
+              'AI & Machine Learning',
+              'Computer Vision',
+              'Autonomous Control',
+              'Embedded Systems',
+              'Aerial Robotics'
+            ]
+          },
+          impact: {
+            kicker: 'Tác động',
+            items: ['Nghiên cứu ứng dụng', 'Hợp tác công nghiệp', 'Giáo dục STEM', 'Đổi mới mở']
+          },
+          footer: {
+            lines: ['Phòng thí nghiệm UAV & Robotics', 'Đại học Tôn Đức Thắng', '19 Nguyễn Hữu Thọ', 'TP. Hồ Chí Minh, Việt Nam']
+          }
+        }
+      };
+
+      const t = dictionary[lang];
+
+      useEffect(() => {
+        window.localStorage.setItem('urlab-lang', lang);
+        document.documentElement.lang = lang;
+        document.title = lang === 'vi'
+          ? 'URLAB - Kien tao he thong tu hanh'
+          : 'URLAB - Empowering the Autonomous Future';
+      }, [lang]);
+
+      useEffect(() => {
+        gsap.registerPlugin(ScrollTrigger);
+
+        if (prefersReducedMotion) {
+          return () => {
+            ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
+          };
+        }
+
+        gsap.utils.toArray('.axis-card').forEach((card, idx) => {
+          gsap.from(card, {
+            y: 70,
+            opacity: 0,
+            duration: 0.9,
+            delay: idx * 0.08,
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: card,
+              start: 'top 82%'
+            }
+          });
+        });
+
+        gsap.utils.toArray('.project-card').forEach((card, idx) => {
+          gsap.from(card, {
+            x: 80,
+            opacity: 0,
+            duration: 0.9,
+            delay: idx * 0.1,
+            ease: 'power3.out',
+            scrollTrigger: {
+              trigger: card,
+              start: 'left 88%'
+            }
+          });
+        });
+
+        gsap.from('.golden-copy h1', {
+          scale: 1.03,
+          opacity: 0,
+          duration: 1.1,
+          ease: 'power3.out'
+        });
+
+        return () => {
+          ScrollTrigger.getAll().forEach((trigger) => trigger.kill());
+        };
+      }, []);
+
+      return (
+        <div ref={rootRef} className="relative z-10 pb-6">
+          <TopNav t={t} lang={lang} setLang={setLang} />
+          <HeroSection t={t} />
+          <TriAxisSection t={t} />
+          <PrinciplesSection t={t} />
+          <TechnologySection t={t} />
+          <ProjectsSection t={t} />
+          <ImpactSection t={t} />
+          <FooterSection t={t} />
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 576" preserveAspectRatio="xMidYMid meet" role="img" aria-labelledby="title desc">
+  <title id="title">URLAB Lambda Field Pattern</title>
+  <desc id="desc">Lambda field pattern with symbol size 24, spacing 96, rotation 0 and opacity 6 percent.</desc>
+  <defs>
+    <path id="lambda-symbol" d="M0 24 L12 0 L24 24 H18 L12 12 L6 24 Z"/>
+  </defs>
+  <rect width="576" height="576" fill="#FFFFFF"/>
+  <g fill="#0B132B" opacity="0.06">
+    <use href="#lambda-symbol" x="36" y="36"/>
+    <use href="#lambda-symbol" x="132" y="36"/>
+    <use href="#lambda-symbol" x="228" y="36"/>
+    <use href="#lambda-symbol" x="324" y="36"/>
+    <use href="#lambda-symbol" x="420" y="36"/>
+    <use href="#lambda-symbol" x="516" y="36"/>
+    <use href="#lambda-symbol" x="36" y="132"/>
+    <use href="#lambda-symbol" x="132" y="132"/>
+    <use href="#lambda-symbol" x="228" y="132"/>
+    <use href="#lambda-symbol" x="324" y="132"/>
+    <use href="#lambda-symbol" x="420" y="132"/>
+    <use href="#lambda-symbol" x="516" y="132"/>
+    <use href="#lambda-symbol" x="36" y="228"/>
+    <use href="#lambda-symbol" x="132" y="228"/>
+    <use href="#lambda-symbol" x="228" y="228"/>
+    <use href="#lambda-symbol" x="324" y="228"/>
+    <use href="#lambda-symbol" x="420" y="228"/>
+    <use href="#lambda-symbol" x="516" y="228"/>
+    <use href="#lambda-symbol" x="36" y="324"/>
+    <use href="#lambda-symbol" x="132" y="324"/>
+    <use href="#lambda-symbol" x="228" y="324"/>
+    <use href="#lambda-symbol" x="324" y="324"/>
+    <use href="#lambda-symbol" x="420" y="324"/>
+    <use href="#lambda-symbol" x="516" y="324"/>
+    <use href="#lambda-symbol" x="36" y="420"/>
+    <use href="#lambda-symbol" x="132" y="420"/>
+    <use href="#lambda-symbol" x="228" y="420"/>
+    <use href="#lambda-symbol" x="324" y="420"/>
+    <use href="#lambda-symbol" x="420" y="420"/>
+    <use href="#lambda-symbol" x="516" y="420"/>
+    <use href="#lambda-symbol" x="36" y="516"/>
+    <use href="#lambda-symbol" x="132" y="516"/>
+    <use href="#lambda-symbol" x="228" y="516"/>
+    <use href="#lambda-symbol" x="324" y="516"/>
+    <use href="#lambda-symbol" x="420" y="516"/>
+    <use href="#lambda-symbol" x="516" y="516"/>
+  </g>
+</svg>
