@@ -19,7 +19,7 @@
 
 ## Yêu cầu môi trường
 
-- Node.js (khuyến nghị bản LTS mới).
+- Node.js >= 20 (khuyến nghị dùng bản LTS).
 - npm.
 - Windows + PowerShell nếu chạy chế độ desktop COM (`dev:windows`).
 
@@ -60,7 +60,7 @@ npm run dev:gateway
 npm run dev
 ```
 
-Frontend chạy tại `http://localhost:3000`, gateway mặc định `http://localhost:8787`.
+Frontend chạy tại `http://localhost:3000` (được cấu hình trong script `npm run dev`), gateway mặc định `http://localhost:8787`.
 
 Kiểm tra health gateway:
 
