@@ -1,54 +1,132 @@
 <div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
+  <img width="1200" height="475" alt="GHBanner" src="https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6" />
 </div>
 
-# Run and deploy your AI Studio app
+# STEAM Planner
 
-This contains everything you need to run your app locally.
+Ứng dụng điều khiển robot dog của URLAB, hỗ trợ:
+- Giao diện dashboard React/Vite để điều khiển và theo dõi telemetry.
+- Cầu nối UDP Gateway (`/api/udp-gateway`) để chuyển lệnh từ app sang robot qua UDP.
+- Runtime desktop Electron cho Windows, có tích hợp COM service phục vụ provisioning/diagnostics.
 
-View your app in AI Studio: https://ai.studio/apps/6da9e705-9a1a-46a6-a553-d5a90eceeee7
+## Kiến trúc nhanh
 
-## Run Locally
+- `src/`: frontend React (dashboard, điều khiển, watchdog, telemetry).
+- `server/gateway.mjs`: HTTP gateway chuyển tiếp lệnh UDP đến robot.
+- `server/udp-simulator.mjs`: UDP simulator để test local.
+- `electron/`: main process + preload cho bản desktop Windows.
+- `docs/`: đặc tả contract tích hợp app/firmware.
 
-**Prerequisites:**  Node.js
+## Yêu cầu môi trường
 
+- Node.js (khuyến nghị bản LTS mới).
+- npm.
+- Windows + PowerShell nếu chạy chế độ desktop COM (`dev:windows`).
 
-1. Install dependencies:
-   `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
-3. Start UDP simulator (Terminal 1):
-   `npm run dev:sim`
-4. Start UDP gateway (Terminal 2):
-   `npm run dev:gateway`
-5. Run the app (Terminal 3):
-   `npm run dev`
+## Cài đặt
 
-## UDP Gateway (Round 3+)
+```bash
+npm install
+```
 
-- Frontend emits events to `/api/udp-gateway`
-- Vite proxies `/api/*` to `http://localhost:8787`
-- Gateway forwards JSON payloads as UDP packets to `ROBOT_UDP_HOST:ROBOT_UDP_PORT`
+Tạo file môi trường local từ mẫu:
 
-Quick health check:
-`curl http://localhost:8787/api/health`
+```bash
+cp .env.example .env.local
+```
 
-If ports are occupied, run with overrides:
-- PowerShell gateway: `$env:GATEWAY_PORT='8788'; $env:ROBOT_UDP_PORT='9010'; npm run dev:gateway`
-- PowerShell simulator: `$env:ROBOT_UDP_PORT='9010'; npm run dev:sim`
+Thiết lập tối thiểu trong `.env.local`:
+- `GEMINI_API_KEY`
+- `GATEWAY_PORT` (mặc định `8787`)
+- `ROBOT_UDP_HOST` (mặc định `127.0.0.1`)
+- `ROBOT_UDP_PORT` (mặc định `9000`)
 
-## Windows Desktop Build (Electron)
+## Chạy local (Web + UDP)
+
+Mở 3 terminal:
+
+1) Chạy UDP simulator:
+```bash
+npm run dev:sim
+```
+
+2) Chạy UDP gateway:
+```bash
+npm run dev:gateway
+```
+
+3) Chạy frontend:
+```bash
+npm run dev
+```
+
+Frontend chạy tại `http://localhost:3000`, gateway mặc định `http://localhost:8787`.
+
+Kiểm tra health gateway:
+
+```bash
+curl http://localhost:8787/api/health
+```
+
+## Chạy desktop Windows (Electron)
+
+Chạy đồng thời gateway + desktop app:
+
+```bash
+npm run dev:windows
+```
+
+Luồng sử dụng điển hình:
+1. Kết nối COM để provisioning/diagnostics.
+2. Cấu hình Wi-Fi cho robot.
+3. Chuyển qua điều khiển runtime qua Wi-Fi (UDP).
+
+## Build
+
+Build web:
+
+```bash
+npm run build
+```
 
 Build Windows installer:
-`npm run build:desktop`
 
-Installer output:
-- `release/steam-planner-0.0.0-setup.exe`
+```bash
+npm run build:desktop
+```
 
-## Quick Test With Real Robot (Windows)
+Artifact mặc định:
+- `release/steam-planner-<version>-setup.exe`
 
-1. Configure robot target in PowerShell:
-   - `$env:ROBOT_UDP_HOST='192.168.4.1'`
-   - `$env:ROBOT_UDP_PORT='9000'`
-2. Start gateway + desktop app:
-   - `npm run dev:windows`
-3. In app, connect and verify telemetry + command flow.
+Build bản portable:
+
+```bash
+npm run build:desktop:portable
+```
+
+## Scripts chính
+
+- `npm run dev`: chạy frontend Vite.
+- `npm run dev:gateway`: chạy HTTP -> UDP gateway.
+- `npm run dev:sim`: chạy UDP simulator local.
+- `npm run dev:desktop`: chạy frontend + Electron.
+- `npm run dev:windows`: chạy gateway + desktop (Windows workflow).
+- `npm run lint`: kiểm tra TypeScript (`tsc --noEmit`).
+- `npm run clean`: xóa `dist` và `release`.
+
+## Tài liệu kỹ thuật liên quan
+
+- [Embedded Team Handoff](docs/embedded-handoff-windows-robot.md)
+- [Keepalive Contract V1](docs/keepalive-contract-v1.md)
+- [App COM Mission Profile V1](docs/app-com-mission-profile-v1.md)
+- [Contract V1 Test Commands](docs/contract-v1-test-commands.md)
+
+## Gợi ý test nhanh với robot thật (Windows)
+
+PowerShell:
+
+```powershell
+$env:ROBOT_UDP_HOST='192.168.4.1'
+$env:ROBOT_UDP_PORT='9000'
+npm run dev:windows
+```
