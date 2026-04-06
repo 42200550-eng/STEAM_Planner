@@ -36,7 +36,6 @@ cp .env.example .env.local
 ```
 
 Thiết lập tối thiểu trong `.env.local`:
-- `GEMINI_API_KEY`
 - `GATEWAY_PORT` (mặc định `8787`)
 - `ROBOT_UDP_HOST` (mặc định `127.0.0.1`)
 - `ROBOT_UDP_PORT` (mặc định `9000`)
