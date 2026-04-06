@@ -45,7 +45,7 @@ export function DynamicHeader({
   return (
     <header className={`dynamic-header ${isFlashing ? 'dynamic-header-flashing' : ''}`}>
       <div className="dynamic-header-left">
-        <img src="/urlab_logo_secondary_white.svg" alt="URLAB" className="header-logo" />
+        <img src="urlab_logo_secondary_white.svg" alt="URLAB" className="header-logo" />
       </div>
 
       <div className="dynamic-header-right">

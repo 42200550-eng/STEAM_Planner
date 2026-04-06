@@ -1,8 +1,10 @@
 node_modules/
 build/
 dist/
+release/
 coverage/
 .DS_Store
 *.log
+builder-effective-config.yaml
 .env*
 !.env.example

@@ -4,7 +4,7 @@ export function AwakeningScreen() {
     <div className="awakening-screen">
       <div className="obsidian-haze" />
       <motion.img
-        src="/urlab_logo_icon_official.svg"
+        src="urlab_logo_icon_official.svg"
         alt="URLAB Lambda"
         className="splash-lambda"
         initial={{ opacity: 0, scale: 0.9, filter: 'brightness(0.75) invert(1)' }}

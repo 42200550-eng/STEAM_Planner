@@ -24,6 +24,23 @@ type QueueItem<K extends keyof RobotEventMap = keyof RobotEventMap> = {
   attempts: number;
 };
 
+const FALLBACK_GATEWAY_ORIGIN = 'http://127.0.0.1:8787';
+
+function resolveGatewayUrl(path: string) {
+  const maybeImportMeta = import.meta as ImportMeta & { env?: Record<string, string | undefined> };
+  const configuredBase = maybeImportMeta.env?.VITE_GATEWAY_BASE_URL?.trim();
+
+  if (configuredBase) {
+    return `${configuredBase.replace(/\/$/, '')}${path}`;
+  }
+
+  if (window.location.protocol === 'file:') {
+    return `${FALLBACK_GATEWAY_ORIGIN}${path}`;
+  }
+
+  return path;
+}
+
 const listeners = new Set<(stats: GatewayStats) => void>();
 
 function withLoss(stats: GatewayStats) {
@@ -65,8 +82,8 @@ class HttpUdpGatewayAdapter implements RobotGatewayAdapter {
   private readonly maxQueueSize = 220;
 
   constructor(
-    private endpoint = '/api/udp-gateway',
-    private healthEndpoint = '/api/health',
+    private endpoint = resolveGatewayUrl('/api/udp-gateway'),
+    private healthEndpoint = resolveGatewayUrl('/api/health'),
   ) {
     window.setInterval(() => {
       void this.healthCheck();

@@ -1,0 +1,17 @@
+appId: com.urlab.steamplanner
+productName: STEAM Planner
+directories:
+  output: release
+files:
+  - dist/**/*
+  - electron/**/*
+  - package.json
+win:
+  target:
+    - nsis
+  artifactName: steam-planner-${version}-setup.${ext}
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

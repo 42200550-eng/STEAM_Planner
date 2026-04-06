@@ -28,11 +28,22 @@ export type LogicRunPayload = {
 
 export type Telemetry = {
   battery: number;
-  speed: number;
+  velocity: number;
   temp: number;
+  pitch: number;
+  roll: number;
+  state: 'idle' | 'running' | 'hold' | 'estop';
+  gait: 'walk' | 'trot' | 'stomp' | '--';
+  wifi: {
+    mode: string;
+    ip: string;
+    rssi: number;
+  };
+  seq: number;
+  ts: number;
 };
 
-export type ControlAction = 'arm' | 'disarm' | 'estop';
+export type ControlAction = 'arm' | 'hold' | 'stop' | 'estop';
 
 export type RobotEventMap = {
   imu_update: { tilt: number };

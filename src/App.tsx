@@ -8,10 +8,11 @@ import type { AppPhase, Language } from './types';
 export default function App() {
   const [language] = useState<Language>('vi');
   const [phase, setPhase] = useState<AppPhase>('void');
-  const { telemetry } = useMockRobotStream(phase === 'connected');
+  useMockRobotStream(phase === 'connected');
   const t = copy[language];
 
   useEffect(() => {
+    console.log('[app] mounted');
     const detectTimer = window.setTimeout(() => setPhase('connected'), 2600);
     return () => window.clearTimeout(detectTimer);
   }, []);
@@ -20,5 +21,5 @@ export default function App() {
     return <AwakeningScreen />;
   }
 
-  return <MonolithicDashboard velocity={telemetry.speed} battery={telemetry.battery} t={t} />;
+  return <MonolithicDashboard t={t} />;
 }

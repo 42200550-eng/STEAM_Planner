@@ -3,9 +3,20 @@ import { mockRobotBus } from '../lib/mockRobotBus';
 import type { Telemetry } from '../types';
 
 const initialTelemetry: Telemetry = {
-  battery: 87,
-  speed: 0.52,
-  temp: 39.4,
+  battery: -1,
+  velocity: 0,
+  temp: 0,
+  pitch: 0,
+  roll: 0,
+  state: 'idle',
+  gait: '--',
+  wifi: {
+    mode: 'off',
+    ip: '--',
+    rssi: 0,
+  },
+  seq: 0,
+  ts: 0,
 };
 
 export function useMockRobotStream(connected: boolean) {
@@ -29,31 +40,12 @@ export function useMockRobotStream(connected: boolean) {
 
   useEffect(() => {
     if (!connected) {
+      setTelemetry(initialTelemetry);
+      setTilt(0);
       return;
     }
 
-    let currentTilt = 0;
-    let currentBattery = initialTelemetry.battery;
-    const telemetryTimer = window.setInterval(() => {
-      const nextBattery = currentBattery - 0.3 < 9 ? 82 : Number((currentBattery - 0.3).toFixed(1));
-      currentBattery = nextBattery;
-      const nextTelemetry: Telemetry = {
-        battery: nextBattery,
-        speed: Number((Math.random() * 1.6 + 0.2).toFixed(2)),
-        temp: Number((38.2 + Math.random() * 6.1).toFixed(1)),
-      };
-      mockRobotBus.emit('telemetry_update', nextTelemetry);
-    }, 1100);
-
-    const imuTimer = window.setInterval(() => {
-      currentTilt = Number((Math.sin(Date.now() / 800) * 8).toFixed(1));
-      mockRobotBus.emit('imu_update', { tilt: currentTilt });
-    }, 450);
-
-    return () => {
-      window.clearInterval(telemetryTimer);
-      window.clearInterval(imuTimer);
-    };
+    return undefined;
   }, [connected]);
 
   const setManualTilt = (nextTilt: number) => {
