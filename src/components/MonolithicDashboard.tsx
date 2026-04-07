@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { AppCopy } from '../i18n';
+import {
+  isArmControlEnabled,
+  isMotionControlEnabled,
+  parseCapabilityFromRecord,
+  parseFlag,
+  reasonCodeLabel,
+  type RuntimeCapability,
+} from '../lib/firmwareContract';
 
 type CommandTemplate = {
   label: string;
@@ -41,7 +49,6 @@ const keyboardKeys = [...movementKeys, ...actionKeys, 'SPACE'] as const;
 type GhostKey = (typeof keyboardKeys)[number];
 type ActionKey = (typeof actionKeys)[number];
 type SegmentTab = 'control' | 'studio' | 'calib' | 'wifi' | 'log';
-type AppMode = 'workshop' | 'field';
 type ActionPreset = 'sit' | 'stretch' | 'butt_up' | 'jump' | 'hi';
 const actionPresetOrder: ActionPreset[] = ['sit', 'stretch', 'butt_up', 'jump', 'hi'];
 type FirmwareAction =
@@ -96,32 +103,6 @@ type RuntimePhase = 'DETACHED' | 'USB_ONLY' | 'PROVISIONING' | 'WIFI_PRIMARY' | 
 type RuntimeTransport = 'wifi' | 'serial';
 type ConnectionUxState = 'DISCONNECTED' | 'LINK_REACHABLE' | 'READY_AP_FALLBACK' | 'READY_STA_PRIMARY' | 'DEGRADED';
 type LinkMode = 'sta_primary' | 'ap_fallback' | 'unknown';
-
-function reasonCodeLabel(reasonCode: number, fallback: string) {
-  const text = fallback.trim();
-  if (text) {
-    return text;
-  }
-
-  switch (reasonCode) {
-    case 0x00:
-      return 'ok';
-    case 0x01:
-      return 'stale_ttl';
-    case 0x02:
-      return 'duplicate_id';
-    case 0x03:
-      return 'prov_locked';
-    case 0x04:
-      return 'dual_active';
-    case 0x05:
-      return 'malformed';
-    case 0x06:
-      return 'not_armed';
-    default:
-      return 'unknown';
-  }
-}
 
 function formatControlLabel(action: FirmwareAction, value?: number) {
   if (action === 'speed' && typeof value === 'number') {
@@ -263,6 +244,12 @@ type UdpGatewayResult =
       replyTimedOut: boolean;
       udpReplyRaw: string | null;
       udpReply: Record<string, unknown> | null;
+      replyCount?: number;
+      udpReplies?: Array<{
+        udpReplyRaw: string | null;
+        udpReply: Record<string, unknown> | null;
+        replyFrom: string | null;
+      }>;
       forwardedTo?: string;
       forwardedWithoutReply?: boolean;
     }
@@ -271,17 +258,62 @@ type UdpGatewayResult =
       error: string;
     };
 
+function getSavedRuntimeTarget() {
+  try {
+    const raw = localStorage.getItem('steam_planner_runtime_udp_target_v1');
+    if (!raw) {
+      return { host: '', port: '9000' };
+    }
+
+    const parsed = JSON.parse(raw) as { host?: unknown; port?: unknown };
+    const host = typeof parsed.host === 'string' ? parsed.host.trim() : '';
+    const port = typeof parsed.port === 'string' ? parsed.port.trim() : '9000';
+    return {
+      host,
+      port: /^\d+$/.test(port) ? port : '9000',
+    };
+  } catch {
+    return { host: '', port: '9000' };
+  }
+}
+
+function getRuntimeTargetFromStorage() {
+  if (typeof window === 'undefined') {
+    return null;
+  }
+
+  const saved = getSavedRuntimeTarget();
+  if (!saved.host || !/^\d+$/.test(saved.port)) {
+    return null;
+  }
+
+  const normalizedPort = Number(saved.port);
+  if (!Number.isFinite(normalizedPort) || normalizedPort < 1 || normalizedPort > 65535) {
+    return null;
+  }
+
+  return {
+    targetHost: saved.host,
+    targetPort: normalizedPort,
+  };
+}
+
 async function sendRobotCommand(
   commandEnvelope: Record<string, unknown>,
   options?: { awaitReply?: boolean },
 ): Promise<UdpGatewayResult> {
   try {
     const shouldAwaitReply = options?.awaitReply !== false;
+    const runtimeTarget = getRuntimeTargetFromStorage();
     const response = await fetch(resolveGatewayEndpoint('/api/udp-gateway'), {
       method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify({
         frame: commandEnvelope,
         awaitReply: shouldAwaitReply,
+        ...(runtimeTarget ?? {}),
       }),
     });
     if (!response.ok) {
@@ -293,7 +325,26 @@ async function sendRobotCommand(
     const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
     const udpReply = isRecord(body?.udpReply) ? body.udpReply : null;
     const udpReplyRaw = typeof body?.udpReplyRaw === 'string' ? body.udpReplyRaw : null;
+    const udpReplies = Array.isArray(body?.udpReplies)
+      ? body!.udpReplies
+          .map((entry) => {
+            if (!isRecord(entry)) {
+              return null;
+            }
+            return {
+              udpReplyRaw: typeof entry.raw === 'string'
+                ? entry.raw
+                : (typeof entry.udpReplyRaw === 'string' ? entry.udpReplyRaw : null),
+              udpReply: isRecord(entry.parsed)
+                ? entry.parsed
+                : (isRecord(entry.udpReply) ? entry.udpReply : null),
+              replyFrom: typeof entry.replyFrom === 'string' ? entry.replyFrom : null,
+            };
+          })
+          .filter((entry): entry is { udpReplyRaw: string | null; udpReply: Record<string, unknown> | null; replyFrom: string | null } => entry !== null)
+      : undefined;
     const replyTimedOut = Boolean(body?.replyTimedOut);
+    const replyCount = Number.isFinite(Number(body?.replyCount)) ? Number(body?.replyCount) : undefined;
     const forwardedTo = typeof body?.forwardedTo === 'string' ? body.forwardedTo : undefined;
     const forwardedWithoutReply = Boolean(body?.forwardedWithoutReply);
 
@@ -302,6 +353,8 @@ async function sendRobotCommand(
       replyTimedOut,
       udpReplyRaw,
       udpReply,
+      replyCount,
+      udpReplies,
       forwardedTo,
       forwardedWithoutReply,
     };
@@ -419,7 +472,16 @@ function normalizeCode(code: string): GhostKey | null {
 function parseLinkStatus(raw: string) {
   const line = raw.trim();
   const lower = line.toLowerCase();
-  const maybeLinkStatus = lower.includes('link_status') || lower.includes('link:') || lower.includes('wifi_');
+  const maybeLinkStatus = lower.includes('link_status')
+    || lower.includes('link:')
+    || lower.includes('wifi_')
+    || lower.includes('robot_id')
+    || lower.includes('udp_port')
+    || lower.includes('capability')
+    || lower.includes('can_arm')
+    || lower.includes('can_motion')
+    || lower.includes('can_service')
+    || lower.includes('calib_write_requires_com');
   const hasIpToken = /\bip\s*=\s*([0-9]{1,3}(?:\.[0-9]{1,3}){3})\b/i.test(line);
 
   if (!maybeLinkStatus && !hasIpToken) {
@@ -435,11 +497,21 @@ function parseLinkStatus(raw: string) {
   const robotId = pick(/\brobot[_-]?id\s*=\s*([^,\s]+)/i);
   const udpPort = pick(/\b(?:control_)?udp[_-]?port\s*=\s*(\d{1,5})\b/i);
   const rssi = pick(/\brssi\s*=\s*(-?\d{1,3})\b/i);
+  const wifiConnected = pick(/\bwifi_connected\s*=\s*([01])\b/i);
+  const apFallback = pick(/\bap_fallback\s*=\s*([01])\b/i);
+  const canArm = pick(/\bcan_arm\s*=\s*([^,\s]+)/i);
+  const canMotion = pick(/\bcan_motion\s*=\s*([^,\s]+)/i);
+  const canService = pick(/\bcan_service\s*=\s*([^,\s]+)/i);
+  const calibWriteRequiresCom = pick(/\bcalib_write_requires_com\s*=\s*([^,\s]+)/i);
 
   let mode: 'off' | 'sta' | 'ap' | null = null;
-  if (lower.includes('wifi_connected') || lower.includes('mode=sta') || lower.includes('mode:sta') || lower.includes('sta=')) {
+  if (apFallback === '1') {
+    mode = 'ap';
+  } else if (wifiConnected === '1') {
     mode = 'sta';
-  } else if (lower.includes('ap_fallback') || lower.includes('mode=ap') || lower.includes('mode:ap') || lower.includes('softap')) {
+  } else if (lower.includes('mode=sta') || lower.includes('mode:sta') || lower.includes('sta=')) {
+    mode = 'sta';
+  } else if (lower.includes('mode=ap') || lower.includes('mode:ap') || lower.includes('softap')) {
     mode = 'ap';
   } else if (lower.includes('wifi_off') || lower.includes('mode=off') || lower.includes('mode:off')) {
     mode = 'off';
@@ -451,8 +523,98 @@ function parseLinkStatus(raw: string) {
     udpPort,
     rssi: rssi !== null ? Number(rssi) : null,
     mode,
+    capability: {
+      canArm: parseFlag(canArm),
+      canMotion: parseFlag(canMotion),
+      canService: parseFlag(canService),
+      calibWriteRequiresCom: parseFlag(calibWriteRequiresCom),
+    },
     raw: line,
   };
+}
+
+function ackRecoveryGuidance(reasonCode: number, reasonText: string) {
+  switch (reasonCode) {
+    case 108:
+      return 'REJECTED 108 • Robot chua STA primary, hay ket noi router truoc khi ARM';
+    case 107:
+      return 'REJECTED 107 • Robot chua armed, bam ARM khi can_arm=1';
+    case 105:
+      return 'REJECTED 105 • Queue/parse loi, giam toc do gui lenh va thu lai';
+    case 103:
+      return 'REJECTED 103 • Lenh trung cmd_id, app se gui lenh moi';
+    case 102:
+      return 'REJECTED 102 • TTL het han, kiem tra network delay';
+    case 100:
+      return 'REJECTED 100 • Payload khong hop le, can dong bo schema';
+    default:
+      return `REJECTED • ${reasonText}`;
+  }
+}
+
+function resolveReplyFrame(reply: Record<string, unknown>) {
+  if (isRecord(reply.frame)) {
+    return reply.frame;
+  }
+  if (isRecord(reply.data)) {
+    return reply.data;
+  }
+  return reply;
+}
+
+function resolveReplyTag(reply: Record<string, unknown>) {
+  const event = typeof reply.event === 'string' ? reply.event : '';
+  const type = typeof reply.type === 'string' ? reply.type : '';
+  const frame = typeof reply.frame === 'string' ? reply.frame : '';
+  return (event || type || frame).trim().toLowerCase();
+}
+
+function parseAckEnvelope(reply: Record<string, unknown>) {
+  const tag = resolveReplyTag(reply);
+  const isAck = tag === 'control_ack' || tag === 'ack';
+
+  const ackIdRaw = Number(reply.ack_id ?? reply.cmd_id);
+  const ackId = Number.isFinite(ackIdRaw) ? ackIdRaw : null;
+
+  const codeRaw = Number(reply.code ?? reply.reason_code);
+  const code = Number.isFinite(codeRaw) ? codeRaw : null;
+
+  const statusRaw = typeof reply.status === 'string' ? reply.status.toUpperCase() : '';
+  const ok = typeof reply.ok === 'boolean'
+    ? reply.ok
+    : (statusRaw ? statusRaw === 'OK' : code === 0);
+
+  const reasonText = typeof reply.msg === 'string'
+    ? reply.msg
+    : (typeof reply.reason_text === 'string' ? reply.reason_text : '');
+
+  return {
+    isAck,
+    ackId,
+    code,
+    ok,
+    reasonText,
+  };
+}
+
+function hasTelemetryEnvelope(reply: Record<string, unknown>) {
+  const ack = parseAckEnvelope(reply);
+  if (ack.isAck) {
+    return false;
+  }
+
+  const tag = resolveReplyTag(reply);
+  return tag === 'telemetry'
+    || tag === 'telemetry_update'
+    || typeof reply.robot_state === 'string'
+    || parseCapabilityFromRecord(reply) !== null
+    || isRecord(reply.capability)
+    || (isRecord(reply.payload)
+      && (
+        isRecord(reply.payload.capability)
+        || parseCapabilityFromRecord(reply.payload) !== null
+        || typeof reply.payload.robot_state === 'string'
+      ));
 }
 
 export function MonolithicDashboard({
@@ -460,7 +622,6 @@ export function MonolithicDashboard({
 }: {
   t: AppCopy;
 }) {
-  const [appMode, setAppMode] = useState<AppMode>('workshop');
   const [endpoint, setEndpoint] = useState('');
   const [comPorts, setComPorts] = useState<ComPortOption[]>([]);
   const [isOnline, setIsOnline] = useState(false);
@@ -470,6 +631,12 @@ export function MonolithicDashboard({
   const [connectionState, setConnectionState] = useState<ConnectionUxState>('DISCONNECTED');
   const [linkMode, setLinkMode] = useState<LinkMode>('unknown');
   const [armReady, setArmReady] = useState(false);
+  const [capability, setCapability] = useState<RuntimeCapability>({
+    canArm: false,
+    canMotion: false,
+    canService: true,
+    calibWriteRequiresCom: true,
+  });
   const [activeSegment, setActiveSegment] = useState<SegmentTab>('control');
   const [robotId, setRobotId] = useState('--');
   const [fwVersion, setFwVersion] = useState('--');
@@ -538,6 +705,8 @@ export function MonolithicDashboard({
   const [wifiPassword, setWifiPassword] = useState('');
   const [wifiRobotId, setWifiRobotId] = useState('RB-01');
   const [wifiUdpPort, setWifiUdpPort] = useState('9000');
+  const [wifiTargetHost, setWifiTargetHost] = useState(() => getSavedRuntimeTarget().host);
+  const [wifiTargetPort, setWifiTargetPort] = useState(() => getSavedRuntimeTarget().port);
   const [wifiMessage, setWifiMessage] = useState('');
   const [wifiReady, setWifiReady] = useState(false);
   const [wifiAckAt, setWifiAckAt] = useState<number | null>(null);
@@ -557,6 +726,7 @@ export function MonolithicDashboard({
   });
   const [graphPoints, setGraphPoints] = useState<GraphPoint[]>([]);
   const [lastControlUpdate, setLastControlUpdate] = useState<string>('idle');
+  const [provisionWizardStep, setProvisionWizardStep] = useState<'detect' | 'flash' | 'provision' | 'reboot' | 'discover' | 'done'>('detect');
   const isTimelineRunningRef = useRef(false);
   const timelineAbortRef = useRef<AbortController | null>(null);
   const logIdRef = useRef(0);
@@ -619,20 +789,33 @@ export function MonolithicDashboard({
   const activeKeysRef = useRef<Record<GhostKey, boolean>>(initialActiveKeys);
   const serialCommandQueueRef = useRef<Promise<void>>(Promise.resolve());
   const lastSerialOfflineWarnAtRef = useRef(0);
-  const appModeRef = useRef<AppMode>('workshop');
+  const lastStopSentAtRef = useRef(0);
   const connectionStateRef = useRef<ConnectionUxState>('DISCONNECTED');
   const armReadyRef = useRef(false);
-  const ackWindowMs = 600;
-  const telemetryFreshMs = 800;
-  const degradedMs = 3500;
+  const capabilityRef = useRef<RuntimeCapability>({
+    canArm: false,
+    canMotion: false,
+    canService: true,
+    calibWriteRequiresCom: true,
+  });
+  const lastCapabilitySnapshotRef = useRef('');
+  const ackWindowMs = parseEnvInt('VITE_WIFI_ACK_WINDOW_MS', 1100, 300, 5000);
+  const telemetryFreshMs = parseEnvInt('VITE_WIFI_TELEMETRY_FRESH_MS', 1800, 500, 8000);
+  const degradedMs = parseEnvInt('VITE_WIFI_DEGRADED_MS', 5000, 1000, 15000);
 
   useEffect(() => {
     localStorage.setItem('steam_planner_robot_inventory_v1', JSON.stringify(inventory));
   }, [inventory]);
 
   useEffect(() => {
-    appModeRef.current = appMode;
-  }, [appMode]);
+    localStorage.setItem(
+      'steam_planner_runtime_udp_target_v1',
+      JSON.stringify({
+        host: wifiTargetHost.trim(),
+        port: wifiTargetPort.trim() || '9000',
+      }),
+    );
+  }, [wifiTargetHost, wifiTargetPort]);
 
   useEffect(() => {
     connectionStateRef.current = connectionState;
@@ -642,9 +825,21 @@ export function MonolithicDashboard({
     armReadyRef.current = armReady;
   }, [armReady]);
 
-  const availableSegments = appMode === 'workshop'
-    ? (['studio', 'calib', 'wifi', 'log'] as SegmentTab[])
-    : (['control', 'studio', 'log'] as SegmentTab[]);
+  useEffect(() => {
+    capabilityRef.current = capability;
+  }, [capability]);
+
+  useEffect(() => {
+    const snapshot = `can_arm=${capability.canArm ? 1 : 0} can_motion=${capability.canMotion ? 1 : 0} can_service=${capability.canService ? 1 : 0} calib_write_requires_com=${capability.calibWriteRequiresCom ? 1 : 0}`;
+    if (snapshot === lastCapabilitySnapshotRef.current) {
+      return;
+    }
+
+    lastCapabilitySnapshotRef.current = snapshot;
+    appendLog('RX', `CAPABILITY ${snapshot}`);
+  }, [capability]);
+
+  const availableSegments = ['control', 'studio', 'calib', 'wifi', 'log'] as SegmentTab[];
 
   useEffect(() => {
     if (availableSegments.includes(activeSegment)) {
@@ -652,27 +847,6 @@ export function MonolithicDashboard({
     }
     setActiveSegment(availableSegments[0]);
   }, [activeSegment, availableSegments]);
-
-  const switchAppMode = (nextMode: AppMode) => {
-    if (nextMode === appMode) {
-      return;
-    }
-
-    const hasWifiEvidence = connectionState !== 'DISCONNECTED'
-      || runtimeTransport === 'wifi'
-      || runtimeTelemetry.wifiMode === 'sta'
-      || runtimeTelemetry.wifiMode === 'ap'
-      || wifiAckAt !== null
-      || wifiTelemetryAt !== null;
-
-    if (nextMode === 'field' && !wifiReady && !hasWifiEvidence) {
-      setSignalNote('No Wi-Fi link evidence yet • connect/provision first');
-      return;
-    }
-
-    setAppMode(nextMode);
-    setSignalNote(nextMode === 'field' ? 'FIELD MODE • Wi-Fi runtime control only' : 'WORKSHOP MODE • COM service path');
-  };
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -708,10 +882,6 @@ export function MonolithicDashboard({
   }, [linkMode, wifiAckAt, wifiTelemetryAt]);
 
   useEffect(() => {
-    if (appMode !== 'field') {
-      return;
-    }
-
     if (connectionState === 'DISCONNECTED') {
       return;
     }
@@ -732,7 +902,7 @@ export function MonolithicDashboard({
       alive = false;
       window.clearInterval(timer);
     };
-  }, [appMode, connectionState]);
+  }, [connectionState]);
 
   useEffect(() => {
     if (wifiReady) {
@@ -741,7 +911,7 @@ export function MonolithicDashboard({
 
     if (connectionState === 'READY_AP_FALLBACK' || connectionState === 'READY_STA_PRIMARY' || connectionState === 'LINK_REACHABLE') {
       setWifiReady(true);
-      setWifiMessage('Wi-Fi link detected. You can switch to Field Mode.');
+      setWifiMessage('Wi-Fi link detected. Runtime control is now signal-enabled.');
     }
   }, [connectionState, wifiReady]);
 
@@ -909,23 +1079,57 @@ export function MonolithicDashboard({
     }
 
     if (result.udpReply) {
+      if (options?.appendAck && typeof result.replyCount === 'number' && result.replyCount > 1) {
+        appendLog('RX', `UDP bundle frames=${result.replyCount}`);
+      }
+
+      const primaryReply = resolveReplyFrame(result.udpReply);
+      const supplementalReplies = Array.isArray(result.udpReplies)
+        ? result.udpReplies
+            .slice(1)
+            .map((entry) => (entry.udpReply ? resolveReplyFrame(entry.udpReply) : null))
+            .filter((entry): entry is Record<string, unknown> => entry !== null)
+        : [];
+      const allReplies = [primaryReply, ...supplementalReplies];
       const ackNow = Date.now();
+
       setRuntimeTransport('wifi');
       setRuntimePhase((current) => (current === 'ERROR' || current === 'DETACHED' ? 'WIFI_PRIMARY' : current));
       setRuntimeTelemetry((current) => ({ ...current, wifiMode: 'sta' }));
 
-      const linkModeRaw = typeof result.udpReply.link_mode === 'string'
-        ? result.udpReply.link_mode.toLowerCase()
-        : '';
-      if (linkModeRaw === 'ap_fallback' || linkModeRaw === 'sta_primary') {
-        setLinkMode(linkModeRaw);
-      }
+      const applyCapabilityPatch = (candidate: unknown) => {
+        const parsed = parseCapabilityFromRecord(candidate);
+        if (!parsed) {
+          return;
+        }
+        setCapability((current) => ({
+          ...current,
+          ...parsed,
+        }));
+      };
 
-      const eventName = typeof result.udpReply.event === 'string' ? result.udpReply.event.toLowerCase() : '';
-      const isTelemetry = eventName === 'telemetry' || typeof result.udpReply.robot_state === 'string';
-      if (isTelemetry) {
+      for (const frame of allReplies) {
+        const linkModeRaw = typeof frame.link_mode === 'string' ? frame.link_mode.toLowerCase() : '';
+        if (linkModeRaw === 'ap_fallback' || linkModeRaw === 'sta_primary') {
+          setLinkMode(linkModeRaw);
+        }
+
+        const phase = typeof frame.phase === 'string' ? frame.phase.toUpperCase() : '';
+        if (phase === 'DETACHED' || phase === 'USB_ONLY' || phase === 'PROVISIONING' || phase === 'WIFI_PRIMARY' || phase === 'SERIAL_FALLBACK' || phase === 'ERROR') {
+          setRuntimePhase(phase as RuntimePhase);
+        }
+
+        const transport = typeof frame.transport === 'string' ? frame.transport.toLowerCase() : '';
+        if (transport === 'wifi' || transport === 'serial') {
+          setRuntimeTransport(transport as RuntimeTransport);
+        }
+
+        if (!hasTelemetryEnvelope(frame)) {
+          continue;
+        }
+
         setWifiTelemetryAt(ackNow);
-        const robotState = String(result.udpReply.robot_state ?? '').toLowerCase();
+        const robotState = String(frame.robot_state ?? '').toLowerCase();
         if (robotState === 'idle' || robotState === 'running' || robotState === 'hold' || robotState === 'estop') {
           setRuntimeState(robotState);
           if (robotState === 'running') {
@@ -936,10 +1140,10 @@ export function MonolithicDashboard({
           }
         }
 
-        const velocity = Number(result.udpReply.velocity);
-        const temp = Number(result.udpReply.body_temperature);
-        const battery = Number(result.udpReply.battery_percent);
-        const rssi = Number(result.udpReply.wifi_rssi);
+        const velocity = Number(frame.velocity);
+        const temp = Number(frame.body_temperature);
+        const battery = Number(frame.battery_percent);
+        const rssi = Number(frame.wifi_rssi);
         setRuntimeTelemetry((current) => ({
           ...current,
           velocity: Number.isFinite(velocity) ? velocity : current.velocity,
@@ -947,56 +1151,62 @@ export function MonolithicDashboard({
           battery: Number.isFinite(battery) ? battery : current.battery,
           wifiRssi: Number.isFinite(rssi) ? rssi : current.wifiRssi,
         }));
+
+        applyCapabilityPatch(frame);
+        applyCapabilityPatch(frame.capability);
+
+        const payload = frame.payload;
+        if (isRecord(payload)) {
+          applyCapabilityPatch(payload);
+          applyCapabilityPatch(payload.capability);
+          const ip = typeof payload.ip === 'string' ? payload.ip : null;
+          const mode = typeof payload.mode === 'string' ? payload.mode.toLowerCase() : null;
+          const payloadRssi = Number(payload.rssi);
+          setRuntimeTelemetry((current) => ({
+            ...current,
+            wifiIp: ip ?? current.wifiIp,
+            wifiMode: mode ?? current.wifiMode,
+            wifiRssi: Number.isFinite(payloadRssi) ? payloadRssi : current.wifiRssi,
+          }));
+        }
       }
 
-      const phase = typeof result.udpReply.phase === 'string' ? result.udpReply.phase.toUpperCase() : '';
-      if (phase === 'DETACHED' || phase === 'USB_ONLY' || phase === 'PROVISIONING' || phase === 'WIFI_PRIMARY' || phase === 'SERIAL_FALLBACK' || phase === 'ERROR') {
-        setRuntimePhase(phase as RuntimePhase);
+      const ackFrame = allReplies.find((entry) => parseAckEnvelope(entry).isAck) ?? null;
+      if (!ackFrame) {
+        if (options?.fromHeartbeat) {
+          wifiTimeoutStreakRef.current += 1;
+          logWatchdogEvent('hb_no_ack_frame', `${wifiTimeoutStreakRef.current}/${heartbeatTimeoutLimit}`);
+          if (wifiTimeoutStreakRef.current >= heartbeatTimeoutLimit) {
+            triggerWatchdogFallback();
+          }
+        }
+
+        if (wifiAckAt !== null) {
+          setPing(Math.max(0, Date.now() - wifiAckAt));
+        }
+        return;
       }
 
-      const transport = typeof result.udpReply.transport === 'string' ? result.udpReply.transport.toLowerCase() : '';
-      if (transport === 'wifi' || transport === 'serial') {
-        setRuntimeTransport(transport as RuntimeTransport);
-      }
-
-      const payload = result.udpReply.payload;
-      if (isRecord(payload)) {
-        const ip = typeof payload.ip === 'string' ? payload.ip : null;
-        const mode = typeof payload.mode === 'string' ? payload.mode.toLowerCase() : null;
-        const rssi = Number(payload.rssi);
-
-        setRuntimeTelemetry((current) => ({
-          ...current,
-          wifiIp: ip ?? current.wifiIp,
-          wifiMode: mode ?? current.wifiMode,
-          wifiRssi: Number.isFinite(rssi) ? rssi : current.wifiRssi,
-        }));
-      }
-
-      const isControlAck = typeof result.udpReply.event === 'string' && result.udpReply.event.toLowerCase() === 'control_ack';
-      const reasonCode = isControlAck
-        ? Number(result.udpReply.code)
-        : Number(result.udpReply.reason_code);
-      const status = isControlAck
-        ? (Boolean(result.udpReply.ok) ? 'OK' : 'ERROR')
-        : (typeof result.udpReply.status === 'string' ? result.udpReply.status.toUpperCase() : 'OK');
+      const ackEnvelope = parseAckEnvelope(ackFrame);
+      const reasonCode = Number.isFinite(ackEnvelope.code) ? Number(ackEnvelope.code) : Number(ackFrame.reason_code);
+      const status = ackEnvelope.ok ? 'OK' : 'ERROR';
       const reasonText = reasonCodeLabel(
         Number.isFinite(reasonCode) ? reasonCode : 0,
-        isControlAck
-          ? (typeof result.udpReply.msg === 'string' ? result.udpReply.msg : '')
-          : (typeof result.udpReply.reason_text === 'string' ? result.udpReply.reason_text : ''),
+        ackEnvelope.reasonText,
       );
-      const ackId = Number(result.udpReply.ack_id);
+      const ackId = Number(ackEnvelope.ackId);
       const hasAckId = Number.isFinite(ackId);
 
       if (options?.appendAck) {
         appendLog(
           'RX',
-          `ACK ${status} id=${Number.isFinite(ackId) ? String(ackId) : '-'} code=0x${(Number.isFinite(reasonCode) ? reasonCode : 0).toString(16).padStart(2, '0')} reason=${reasonText}`,
+          `ACK ${status} id=${Number.isFinite(ackId) ? String(ackId) : '-'} code=${Number.isFinite(reasonCode) ? reasonCode : 0} reason=${reasonText}`,
         );
       }
 
       if (status !== 'OK') {
+        const normalizedReasonCode = Number.isFinite(reasonCode) ? reasonCode : -1;
+        setSignalNote(ackRecoveryGuidance(normalizedReasonCode, reasonText));
         if (options?.fromHeartbeat) {
           wifiTimeoutStreakRef.current += 1;
           logWatchdogEvent('hb_reject', `${wifiTimeoutStreakRef.current}/${heartbeatTimeoutLimit} ${reasonText}`);
@@ -1010,40 +1220,39 @@ export function MonolithicDashboard({
             }
           }
         }
-        setSignalNote(`REJECTED • ${reasonText}`);
-      } else {
-        setWifiAckAt(ackNow);
-        if (options?.fromHeartbeat) {
-          heartbeatMalformedStreakRef.current = 0;
-        }
-
-        if (options?.fromHeartbeat) {
-          const expectedAckId = lastHeartbeatCmdIdRef.current;
-          if (expectedAckId === null || !hasAckId || ackId !== expectedAckId) {
-            wifiTimeoutStreakRef.current += 1;
-            logWatchdogEvent(
-              'hb_ack_unmatched',
-              `got=${hasAckId ? String(ackId) : '-'} expected=${expectedAckId ?? '-'} ${wifiTimeoutStreakRef.current}/${heartbeatTimeoutLimit}`,
-            );
-            setSignalNote(`WATCHDOG WARNING • ACK unmatched (${wifiTimeoutStreakRef.current}/${heartbeatTimeoutLimit})`);
-            if (wifiTimeoutStreakRef.current >= heartbeatTimeoutLimit) {
-              triggerWatchdogFallback();
-            }
-            return;
-          }
-        }
-
-        const recoveredFrom = wifiTimeoutStreakRef.current;
-        wifiTimeoutStreakRef.current = 0;
-        watchdogFallbackLatchedRef.current = false;
-        setWifiAckAt(Date.now());
-        if (options?.fromHeartbeat && recoveredFrom > 0) {
-          logWatchdogEvent('hb_recovered', `after_streak=${recoveredFrom}`);
-        }
-        setSignalNote('ONLINE • WIFI_PRIMARY • ACK');
+        return;
       }
 
-      const watchdogAgeMs = Number(result.udpReply.watchdog_age_ms);
+      setWifiAckAt(ackNow);
+      if (options?.fromHeartbeat) {
+        heartbeatMalformedStreakRef.current = 0;
+      }
+
+      if (options?.fromHeartbeat) {
+        const expectedAckId = lastHeartbeatCmdIdRef.current;
+        if (expectedAckId === null || !hasAckId || ackId !== expectedAckId) {
+          wifiTimeoutStreakRef.current += 1;
+          logWatchdogEvent(
+            'hb_ack_unmatched',
+            `got=${hasAckId ? String(ackId) : '-'} expected=${expectedAckId ?? '-'} ${wifiTimeoutStreakRef.current}/${heartbeatTimeoutLimit}`,
+          );
+          setSignalNote(`WATCHDOG WARNING • ACK unmatched (${wifiTimeoutStreakRef.current}/${heartbeatTimeoutLimit})`);
+          if (wifiTimeoutStreakRef.current >= heartbeatTimeoutLimit) {
+            triggerWatchdogFallback();
+          }
+          return;
+        }
+      }
+
+      const recoveredFrom = wifiTimeoutStreakRef.current;
+      wifiTimeoutStreakRef.current = 0;
+      watchdogFallbackLatchedRef.current = false;
+      if (options?.fromHeartbeat && recoveredFrom > 0) {
+        logWatchdogEvent('hb_recovered', `after_streak=${recoveredFrom}`);
+      }
+      setSignalNote('ONLINE • WIFI_PRIMARY • ACK');
+
+      const watchdogAgeMs = Number(ackFrame.watchdog_age_ms ?? primaryReply.watchdog_age_ms);
       if (Number.isFinite(watchdogAgeMs) && watchdogAgeMs >= 0) {
         setPing(Math.floor(watchdogAgeMs));
 
@@ -1104,26 +1313,32 @@ export function MonolithicDashboard({
   };
 
   const issueFirmwareAction = async (action: FirmwareAction, value?: number) => {
-    const workshopAllowedActions: FirmwareAction[] = ['hold', 'stop', 'estop', 'clear_estop'];
-    if (appModeRef.current === 'workshop' && !workshopAllowedActions.includes(action)) {
-      appendLog('RX', `ACK REJECTED workshop_mode action=${action} mode=${appModeRef.current}`);
-      setSignalNote('WORKSHOP MODE • runtime control blocked');
-      return;
-    }
-
-    const readyStates: ConnectionUxState[] = ['READY_AP_FALLBACK', 'READY_STA_PRIMARY'];
     const motionAllowedStates: ConnectionUxState[] = ['LINK_REACHABLE', 'READY_AP_FALLBACK', 'READY_STA_PRIMARY', 'DEGRADED'];
     const motionActions: FirmwareAction[] = ['forward', 'backward', 'left', 'right', 'walk', 'trot', 'stomp', 'sit', 'stretch', 'butt_up', 'jump', 'hi', 'speed', 'height'];
-    if (appModeRef.current === 'field' && action === 'arm' && connectionStateRef.current === 'DISCONNECTED') {
+    const capabilityStale = wifiTelemetryAt === null || (Date.now() - wifiTelemetryAt) > (telemetryFreshMs * 2);
+    const canArmByFallback = connectionStateRef.current !== 'DISCONNECTED' && capabilityStale;
+    const canMotionByFallback = connectionStateRef.current !== 'DISCONNECTED' && armReadyRef.current && capabilityStale;
+    if (action === 'arm' && connectionStateRef.current === 'DISCONNECTED') {
       appendLog('RX', `ACK REJECTED link_not_ready action=${action} state=${connectionStateRef.current}`);
-      setSignalNote('FIELD MODE • link disconnected');
+      setSignalNote('ARM blocked • Wi-Fi link disconnected');
       return;
     }
 
-    if (appModeRef.current === 'field' && motionActions.includes(action)) {
+    if (action === 'arm' && !capabilityRef.current.canArm && !canArmByFallback) {
+      appendLog('RX', `ACK REJECTED capability.can_arm=false action=${action}`);
+      setSignalNote('ARM blocked • can_arm=false (yeu cau STA primary)');
+      return;
+    }
+
+    if (action === 'arm' && !capabilityRef.current.canArm && canArmByFallback) {
+      appendLog('RX', 'ARM FALLBACK • telemetry/capability stale, validating by firmware ACK');
+      setSignalNote('ARM fallback • cho ACK firmware xac nhan');
+    }
+
+    if (motionActions.includes(action)) {
       if (!motionAllowedStates.includes(connectionStateRef.current)) {
         appendLog('RX', `ACK REJECTED link_not_ready action=${action} state=${connectionStateRef.current}`);
-        setSignalNote('FIELD MODE • controls enabled after link reachable');
+        setSignalNote('Runtime blocked • link not reachable yet');
         return;
       }
 
@@ -1131,6 +1346,17 @@ export function MonolithicDashboard({
         appendLog('RX', `ACK REJECTED not_armed action=${action}`);
         setSignalNote('ARM required before motion/action');
         return;
+      }
+
+      if (!capabilityRef.current.canMotion && !canMotionByFallback) {
+        appendLog('RX', `ACK REJECTED capability.can_motion=false action=${action}`);
+        setSignalNote('Motion blocked • can_motion=false');
+        return;
+      }
+
+      if (!capabilityRef.current.canMotion && canMotionByFallback) {
+        appendLog('RX', `MOTION FALLBACK • capability stale action=${action}`);
+        setSignalNote('Motion fallback • validating by firmware ACK');
       }
     }
 
@@ -1152,18 +1378,40 @@ export function MonolithicDashboard({
       return;
     }
 
-    if (udpResult.udpReply && typeof udpResult.udpReply.event === 'string' && udpResult.udpReply.event.toLowerCase() === 'control_ack') {
-      const ackId = Number(udpResult.udpReply.ack_id);
-      if (!Number.isFinite(ackId) || ackId !== cmdId) {
-        appendLog('RX', `ACK WARN unmatched ack_id=${Number.isFinite(ackId) ? ackId : '-'} cmd_id=${cmdId}`);
-        setSignalNote('ACK mismatch • command not confirmed');
+    const replyFrames: Record<string, unknown>[] = [];
+    if (udpResult.udpReply) {
+      replyFrames.push(resolveReplyFrame(udpResult.udpReply));
+    }
+    if (Array.isArray(udpResult.udpReplies)) {
+      for (let i = 1; i < udpResult.udpReplies.length; i += 1) {
+        const entry = udpResult.udpReplies[i];
+        if (entry?.udpReply) {
+          replyFrames.push(resolveReplyFrame(entry.udpReply));
+        }
       }
     }
 
-    if (action === 'arm') {
+    const ackCandidates = replyFrames
+      .map((frame) => parseAckEnvelope(frame))
+      .filter((ack) => ack.isAck);
+    const matchedAck = ackCandidates.find((ack) => ack.ackId === cmdId) ?? null;
+
+    if (!matchedAck && ackCandidates.length > 0) {
+      const firstAck = ackCandidates[0];
+      appendLog('RX', `ACK WARN unmatched ack_id=${firstAck.ackId ?? '-'} cmd_id=${cmdId}`);
+      setSignalNote('ACK mismatch • command not confirmed');
+    }
+
+    const isAckOk = Boolean(
+      matchedAck
+      && matchedAck.ok
+      && matchedAck.code === 0,
+    );
+
+    if (isAckOk && action === 'arm') {
       setArmReady(true);
     }
-    if (action === 'hold' || action === 'estop' || action === 'clear_estop') {
+    if (isAckOk && (action === 'hold' || action === 'estop' || action === 'clear_estop')) {
       setArmReady(false);
     }
 
@@ -1242,6 +1490,33 @@ export function MonolithicDashboard({
     return queuedResult;
   };
 
+  const requireComService = (actionLabel: string) => {
+    if (isComServiceReady) {
+      return true;
+    }
+
+    const message = `${actionLabel}: COM service offline, bam KET NOI COM truoc`;
+    setWifiMessage(message);
+    setSignalNote('COM service offline');
+    return false;
+  };
+
+  const requireWizardStep = (required: typeof provisionWizardStep, actionLabel: string) => {
+    if (provisionWizardStep === required) {
+      return true;
+    }
+
+    setWifiMessage(`${actionLabel}: sai buoc wizard (hien tai ${provisionWizardStep.toUpperCase()})`);
+    return false;
+  };
+
+  const issueSerialCommandOrThrow = async (command: string | Record<string, unknown>, label: string) => {
+    const ok = await issueSerialCommand(command, label);
+    if (!ok) {
+      throw new Error('serial command failed');
+    }
+  };
+
   const debounceSliderCommand = (key: 'speed' | 'height' | 'amplitude', callback: () => Promise<void>) => {
     const current = sliderDebounceRef.current[key];
     if (current !== null) {
@@ -1298,21 +1573,22 @@ export function MonolithicDashboard({
 
     try {
       setWifiMessage('Saving provisioning...');
-      await issueSerialCommand(`prov wifi_ssid=${ssid}`);
-      await issueSerialCommand(`prov wifi_password=${password}`);
-      await issueSerialCommand(`prov robot_id=${robot}`);
-      await issueSerialCommand(`prov control_udp_port=${port}`);
-      await issueSerialCommand('prov save');
+      await issueSerialCommandOrThrow(`prov wifi_ssid=${ssid}`, 'wizard:prov:ssid');
+      await issueSerialCommandOrThrow(`prov wifi_password=${password}`, 'wizard:prov:password');
+      await issueSerialCommandOrThrow(`prov robot_id=${robot}`, 'wizard:prov:robot_id');
+      await issueSerialCommandOrThrow(`prov control_udp_port=${port}`, 'wizard:prov:udp_port');
+      await issueSerialCommandOrThrow('prov save', 'wizard:prov:save');
       setWifiMessage('Config saved. Reading link status...');
 
       for (let i = 0; i < 4; i += 1) {
-        await issueSerialCommand('link_status');
+        await issueSerialCommandOrThrow('link_status', 'wizard:prov:link_status');
         await new Promise<void>((resolve) => {
           window.setTimeout(resolve, 450);
         });
       }
 
       setWifiReady(true);
+      setProvisionWizardStep('reboot');
       upsertInventoryItem({
         robotId: robot,
         firmwareVersion: fwVersion,
@@ -1321,11 +1597,70 @@ export function MonolithicDashboard({
         healthState: 'wifi_ready',
         wifiReady: true,
       });
-      setSignalNote('WORKSHOP DONE • switch to FIELD MODE');
+      setSignalNote('Provision done • reboot robot to apply and discover IP');
       setWifiMessage('Provision saved. Robot marked Wi-Fi-ready.');
     } catch {
-      setWifiMessage('Provisioning failed. Check serial link.');
+      setWifiMessage('Provisioning failed. Check COM link and try again.');
     }
+  };
+
+  const runServiceWizardDetect = async () => {
+    setWifiMessage('Wizard: Detecting robot over COM...');
+    try {
+      await issueSerialCommandOrThrow('status', 'wizard:detect:status');
+      await issueSerialCommandOrThrow('link_status', 'wizard:detect:link_status');
+      setProvisionWizardStep('flash');
+      setWifiMessage('Wizard Detect done. Flash firmware if needed, then continue.');
+    } catch {
+      setWifiMessage('Wizard Detect failed. Check COM connection.');
+    }
+  };
+
+  const markServiceWizardFlashDone = () => {
+    setProvisionWizardStep('provision');
+    setWifiMessage('Wizard Flash done. Continue provisioning credentials.');
+  };
+
+  const runServiceWizardReboot = async () => {
+    setWifiMessage('Wizard: Rebooting robot...');
+    try {
+      await issueSerialCommandOrThrow('reboot', 'wizard:reboot');
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 1200);
+      });
+      setProvisionWizardStep('discover');
+      setWifiMessage('Wizard reboot sent. Discovering robot IP...');
+    } catch {
+      setWifiMessage('Wizard reboot failed. Check COM connection.');
+    }
+  };
+
+  const runServiceWizardDiscover = async () => {
+    let discoveredIp = runtimeTelemetry.wifiIp;
+    try {
+      for (let i = 0; i < 6; i += 1) {
+        await issueSerialCommandOrThrow('link_status', 'wizard:discover:link_status');
+        await new Promise<void>((resolve) => {
+          window.setTimeout(resolve, 600);
+        });
+        discoveredIp = runtimeTelemetry.wifiIp;
+        if (discoveredIp !== '--' && discoveredIp !== '0.0.0.0') {
+          break;
+        }
+      }
+    } catch {
+      setWifiMessage('Wizard discover failed. Check COM connection.');
+      return;
+    }
+
+    if (discoveredIp !== '--' && discoveredIp !== '0.0.0.0') {
+      setProvisionWizardStep('done');
+      setWifiMessage(`Wizard done. Robot IP discovered: ${discoveredIp}`);
+      setSignalNote('Service wizard complete • Wi-Fi runtime ready');
+      return;
+    }
+
+    setWifiMessage('Wizard discover pending. Keep robot on router and retry discover.');
   };
 
   const movementMap: Record<typeof movementKeys[number], FirmwareAction> = {
@@ -1340,8 +1675,9 @@ export function MonolithicDashboard({
       return;
     }
 
-    if (appModeRef.current !== 'field' && mapped !== 'SPACE') {
-      setSignalNote('WORKSHOP MODE • runtime key control blocked');
+    const motionAllowedStates: ConnectionUxState[] = ['LINK_REACHABLE', 'READY_AP_FALLBACK', 'READY_STA_PRIMARY', 'DEGRADED'];
+    if (mapped !== 'SPACE' && !motionAllowedStates.includes(connectionStateRef.current)) {
+      setSignalNote('Runtime key blocked • link not reachable');
       return;
     }
 
@@ -1385,8 +1721,15 @@ export function MonolithicDashboard({
     setActiveKeys((current) => ({ ...current, [mapped]: false }));
 
     if (mapped === 'W' || mapped === 'A' || mapped === 'S' || mapped === 'D') {
-      appendLog('TX', 'stop');
-      void issueFirmwareAction('stop');
+      const stillMoving = activeKeysRef.current.W || activeKeysRef.current.A || activeKeysRef.current.S || activeKeysRef.current.D;
+      if (!stillMoving) {
+        const now = Date.now();
+        if (now - lastStopSentAtRef.current >= 90) {
+          lastStopSentAtRef.current = now;
+          appendLog('TX', 'stop');
+          void issueFirmwareAction('stop');
+        }
+      }
     }
   };
 
@@ -1549,6 +1892,14 @@ export function MonolithicDashboard({
           setWifiTelemetryAt(Date.now());
           setRuntimeState(status.telemetry.state);
           setRuntimeGait(status.telemetry.gait);
+          const telemetryRecord = status.telemetry as unknown as Record<string, unknown>;
+          const capabilityFromTelemetry = parseCapabilityFromRecord(telemetryRecord.capability);
+          if (capabilityFromTelemetry) {
+            setCapability((current) => ({
+              ...current,
+              ...capabilityFromTelemetry,
+            }));
+          }
           setRuntimeTelemetry({
             battery: status.telemetry.battery,
             velocity: status.telemetry.velocity,
@@ -1595,6 +1946,16 @@ export function MonolithicDashboard({
             } else if (parsed.mode === 'ap') {
               setWifiMessage('WiFi failed, robot is in AP fallback mode.');
             }
+
+            setCapability((current) => ({
+              ...current,
+              ...(parsed.capability.canArm !== null ? { canArm: parsed.capability.canArm } : {}),
+              ...(parsed.capability.canMotion !== null ? { canMotion: parsed.capability.canMotion } : {}),
+              ...(parsed.capability.canService !== null ? { canService: parsed.capability.canService } : {}),
+              ...(parsed.capability.calibWriteRequiresCom !== null
+                ? { calibWriteRequiresCom: parsed.capability.calibWriteRequiresCom }
+                : {}),
+            }));
           }
         }
 
@@ -1641,45 +2002,133 @@ export function MonolithicDashboard({
     };
   }, [comPorts, connectionState, disableLinkTimeout, isDesktopRuntime, runtimePhase, runtimeTelemetry.wifiMode, runtimeTransport, serialLinkTimeoutMs]);
 
-  const handleConnectToggle = async () => {
-    if (appMode === 'field') {
-      if (connectionState !== 'DISCONNECTED') {
-        setWifiAckAt(null);
-        setWifiTelemetryAt(null);
-        setConnectionState('DISCONNECTED');
-        setSignalNote('FIELD MODE • disconnected');
-        return;
-      }
+  const handleWifiConnectToggle = async () => {
+    const targetHost = wifiTargetHost.trim();
+    const targetPort = Number(wifiTargetPort);
+    if (!targetHost) {
+      setSignalNote('Wi-Fi connect blocked • nhap Runtime Target IP');
+      return;
+    }
 
-      setIsConnecting(true);
-      try {
-        let connected = false;
-        for (let attempt = 1; attempt <= 3; attempt += 1) {
-          appendLog('TX', `CONNECT hello attempt ${attempt}`);
-          const helloResult = await dispatchFirmwareAction('status', nextCommandId(), undefined);
-          applyUdpResult(helloResult, { appendAck: true });
+    if (!Number.isFinite(targetPort) || targetPort < 1 || targetPort > 65535) {
+      setSignalNote('Wi-Fi connect blocked • Runtime Target Port khong hop le');
+      return;
+    }
 
-          if (!helloResult.ok || !helloResult.udpReply) {
-            continue;
+    if (connectionState !== 'DISCONNECTED') {
+      setWifiAckAt(null);
+      setWifiTelemetryAt(null);
+      setConnectionState('DISCONNECTED');
+      setSignalNote('Wi-Fi disconnected');
+      return;
+    }
+
+    setIsConnecting(true);
+    try {
+      const tryRefreshCapabilityViaCom = async () => {
+        if (!isComServiceReady) {
+          return;
+        }
+        await issueSerialCommand('link_status', 'wifi-handshake:link_status');
+      };
+
+      const collectReplyFrames = (result: UdpGatewayResult) => {
+        const frames: Record<string, unknown>[] = [];
+        if (result.ok && result.udpReply) {
+          frames.push(resolveReplyFrame(result.udpReply));
+        }
+        if (result.ok && Array.isArray(result.udpReplies)) {
+          for (let i = 1; i < result.udpReplies.length; i += 1) {
+            const item = result.udpReplies[i];
+            if (item?.udpReply) {
+              frames.push(resolveReplyFrame(item.udpReply));
+            }
           }
+        }
+        return frames;
+      };
 
-          const statusResult = await dispatchFirmwareAction('status', nextCommandId(), undefined);
-          applyUdpResult(statusResult, { appendAck: true });
-          if (statusResult.ok) {
-            connected = true;
+      let connected = false;
+      for (let attempt = 1; attempt <= 3; attempt += 1) {
+        const attemptStartedAt = Date.now();
+        let telemetryObserved = false;
+
+        appendLog('TX', `CONNECT hello attempt ${attempt}`);
+        const helloCmdId = nextCommandId();
+        const helloResult = await dispatchFirmwareAction('status', helloCmdId, undefined);
+        applyUdpResult(helloResult, { appendAck: true });
+
+        const helloFrames = collectReplyFrames(helloResult);
+        for (const helloReply of helloFrames) {
+          if (hasTelemetryEnvelope(helloReply)) {
+            telemetryObserved = true;
             break;
           }
         }
 
-        if (!connected) {
-          setSignalNote('DISCONNECTED • connect handshake failed');
+        if (!telemetryObserved) {
+          await tryRefreshCapabilityViaCom();
         }
-      } finally {
-        setIsConnecting(false);
-      }
-      return;
-    }
 
+        if (!helloResult.ok || !helloResult.udpReply) {
+          continue;
+        }
+
+        const statusCmdId = nextCommandId();
+        const statusResult = await dispatchFirmwareAction('status', statusCmdId, undefined);
+        applyUdpResult(statusResult, { appendAck: true });
+
+        const statusFrames = collectReplyFrames(statusResult);
+        for (const statusReply of statusFrames) {
+          if (hasTelemetryEnvelope(statusReply)) {
+            telemetryObserved = true;
+            break;
+          }
+        }
+
+        if (!telemetryObserved) {
+          await tryRefreshCapabilityViaCom();
+        }
+
+        const ackEnvelope = statusFrames
+          .map((frame) => parseAckEnvelope(frame))
+          .find((ack) => ack.isAck && ack.ackId === statusCmdId)
+          ?? statusFrames
+            .map((frame) => parseAckEnvelope(frame))
+            .find((ack) => ack.isAck)
+          ?? null;
+        const hasValidAck = Boolean(
+          statusResult.ok
+          && ackEnvelope?.isAck
+          && ackEnvelope.ackId === statusCmdId
+          && ackEnvelope.ok
+          && ackEnvelope.code === 0,
+        );
+
+        const telemetryWithinWindow = telemetryObserved
+          || (wifiTelemetryAt !== null && wifiTelemetryAt >= attemptStartedAt && Date.now() - wifiTelemetryAt <= 2000);
+
+        if (hasValidAck && telemetryWithinWindow) {
+          connected = true;
+          break;
+        }
+
+        if (statusResult.ok && !hasValidAck) {
+          appendLog('RX', `CONNECT WARN invalid_ack attempt=${attempt} expected_cmd_id=${statusCmdId}`);
+        }
+      }
+
+      if (!connected) {
+        setSignalNote(`DISCONNECTED • handshake fail toi ${targetHost}:${targetPort} (need robot ACK+telemetry)`);
+      } else {
+        await tryRefreshCapabilityViaCom();
+      }
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const handleComConnectToggle = async () => {
     if (!isDesktopRuntime) {
       setIsOnline((v) => !v);
       return;
@@ -1720,7 +2169,6 @@ export function MonolithicDashboard({
         setSignalNote(`COM auto-select ${selectedEndpoint}`);
       }
 
-      setAppMode('workshop');
       setWifiReady(false);
       serialSessionConnectedRef.current = true;
       heartbeatDisabledRef.current = false;
@@ -1911,10 +2359,24 @@ export function MonolithicDashboard({
     }
     return 'DISCONNECTED';
   })();
-  const isWorkshopMode = appMode === 'workshop';
+  const canArmInField = isArmControlEnabled({
+    isWifiConnected,
+    linkMode,
+    capability,
+  });
+  const canArmFallback = isWifiConnected && (wifiTelemetryAt === null || (Date.now() - wifiTelemetryAt) > (telemetryFreshMs * 2));
+  const armEnabled = canArmInField || canArmFallback;
+  const canMotionInField = isMotionControlEnabled({
+    isWifiConnected,
+    capability,
+    armReady,
+  });
+  const canMotionFallback = isWifiConnected && armReady && (wifiTelemetryAt === null || (Date.now() - wifiTelemetryAt) > (telemetryFreshMs * 2));
+  const motionEnabled = canMotionInField || canMotionFallback;
+  const isComServiceReady = isDesktopRuntime && isOnline;
   const segmentLabelMap: Record<SegmentTab, string> = {
     control: 'CONTROL',
-    studio: isWorkshopMode ? 'DIAG' : t.studioMode,
+    studio: t.studioMode,
     calib: 'CALIB',
     wifi: 'WIFI',
     log: 'LOG',
@@ -2100,7 +2562,7 @@ export function MonolithicDashboard({
             min={10}
             max={100}
             value={studioTuning.stepSpeed}
-            disabled={appMode !== 'field'}
+            disabled={!motionEnabled}
             onChange={(event) => {
               const value = Number(event.target.value);
               setStudioTuning((current) => ({ ...current, stepSpeed: value }));
@@ -2121,7 +2583,7 @@ export function MonolithicDashboard({
             min={10}
             max={100}
             value={studioTuning.bodyHeight}
-            disabled={appMode !== 'field'}
+            disabled={!motionEnabled}
             onChange={(event) => {
               const value = Number(event.target.value);
               setStudioTuning((current) => ({ ...current, bodyHeight: value }));
@@ -2142,7 +2604,7 @@ export function MonolithicDashboard({
             min={10}
             max={100}
             value={studioTuning.jointAmplitude}
-            disabled={appMode !== 'field'}
+            disabled={!motionEnabled}
             onChange={(event) => {
               const value = Number(event.target.value);
               setStudioTuning((current) => ({ ...current, jointAmplitude: value }));
@@ -2155,55 +2617,47 @@ export function MonolithicDashboard({
         </div>
 
         <div className="studio-action-map">
-          {appMode === 'field' && (
-            <>
-              <div className="studio-action-map-head">Gait</div>
-              <div className="studio-action-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
-                <button type="button" onClick={() => void issueFirmwareAction('walk')}>WALK</button>
-                <button type="button" onClick={() => void issueFirmwareAction('trot')}>TROT</button>
-                <button type="button" onClick={() => void issueFirmwareAction('stomp')}>STOMP</button>
-              </div>
-
-              <div className="studio-action-map-head">Action Key Mapping</div>
-
-              {actionKeys.map((keyName) => (
-                <label key={keyName} className="studio-action-row">
-                  <span>{keyName}</span>
-                  <select
-                    value={actionBindings[keyName]}
-                    onChange={(event) => {
-                      const nextAction = event.target.value as ActionPreset;
-                      setActionBindings((current) => ({
-                        ...current,
-                        [keyName]: nextAction,
-                      }));
-                    }}
-                  >
-                    {actionOptions.map((option) => (
-                      <option
-                        key={option.value}
-                        value={option.value}
-                        disabled={actionKeys.some(
-                          (otherKey) => otherKey !== keyName && actionBindings[otherKey] === option.value,
-                        )}
-                      >
-                        {option.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              ))}
-            </>
-          )}
-
-          {appMode === 'workshop' && (
-            <div className="studio-action-row" style={{ gridTemplateColumns: '1fr' }}>
-              <span>Workshop Mode active: diagnostics and COM service commands only.</span>
+          <>
+            <div className="studio-action-map-head">Gait</div>
+            <div className="studio-action-row" style={{ gridTemplateColumns: '1fr 1fr 1fr' }}>
+              <button type="button" disabled={!motionEnabled} onClick={() => void issueFirmwareAction('walk')}>WALK</button>
+              <button type="button" disabled={!motionEnabled} onClick={() => void issueFirmwareAction('trot')}>TROT</button>
+              <button type="button" disabled={!motionEnabled} onClick={() => void issueFirmwareAction('stomp')}>STOMP</button>
             </div>
-          )}
+
+            <div className="studio-action-map-head">Action Key Mapping</div>
+
+            {actionKeys.map((keyName) => (
+              <label key={keyName} className="studio-action-row">
+                <span>{keyName}</span>
+                <select
+                  value={actionBindings[keyName]}
+                  onChange={(event) => {
+                    const nextAction = event.target.value as ActionPreset;
+                    setActionBindings((current) => ({
+                      ...current,
+                      [keyName]: nextAction,
+                    }));
+                  }}
+                >
+                  {actionOptions.map((option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                      disabled={actionKeys.some(
+                        (otherKey) => otherKey !== keyName && actionBindings[otherKey] === option.value,
+                      )}
+                    >
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </>
 
           <div className="studio-action-map-head" style={{ marginTop: '0.7rem' }}>
-            {appMode === 'workshop' ? 'Firmware Console (COM Service)' : 'Firmware Console (Read-only in Field Mode)'}
+            Firmware Console (COM Service)
           </div>
           <div className="studio-action-row" style={{ gridTemplateColumns: '1fr' }}>
             <input
@@ -2211,11 +2665,11 @@ export function MonolithicDashboard({
               value={rawCommand}
               onChange={(event) => setRawCommand(event.target.value)}
               placeholder="vd: status | help | pid_kp=0.8 | prov wifi_ssid=URLAB-LAB"
-              disabled={appMode !== 'workshop'}
+              disabled={!isComServiceReady}
             />
             <button
               type="button"
-              disabled={appMode !== 'workshop'}
+              disabled={!isComServiceReady}
               onClick={() => {
                 const command = rawCommand.trim();
                 if (!command) {
@@ -2381,6 +2835,90 @@ export function MonolithicDashboard({
           </div>
 
           <label>
+            Runtime Target IP
+            <input type="text" value={wifiTargetHost} onChange={(event) => setWifiTargetHost(event.target.value)} placeholder="vd: 192.168.137.150" />
+          </label>
+          <label>
+            Runtime Target Port
+            <input type="text" value={wifiTargetPort} onChange={(event) => setWifiTargetPort(event.target.value)} placeholder="9000" />
+          </label>
+          <div className="wifi-actions">
+            <button
+              type="button"
+              onClick={() => {
+                if (runtimeTelemetry.wifiIp !== '--' && runtimeTelemetry.wifiIp !== '0.0.0.0') {
+                  setWifiTargetHost(runtimeTelemetry.wifiIp);
+                }
+                if (/^\d+$/.test(wifiUdpPort)) {
+                  setWifiTargetPort(wifiUdpPort);
+                }
+                setWifiMessage('Runtime target updated from detected IP/port.');
+              }}
+            >
+              USE DETECTED IP
+            </button>
+          </div>
+
+          <div className="wifi-help" style={{ marginBottom: '0.8rem' }}>
+            <p><strong>Service Wizard</strong>: {provisionWizardStep.toUpperCase()}</p>
+            <div className="wifi-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  if (!requireComService('DETECT')) {
+                    return;
+                  }
+                  if (!requireWizardStep('detect', 'DETECT')) {
+                    return;
+                  }
+                  void runServiceWizardDetect();
+                }}
+              >
+                1) DETECT
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!requireWizardStep('flash', 'FLASH DONE')) {
+                    return;
+                  }
+                  markServiceWizardFlashDone();
+                }}
+              >
+                2) FLASH DONE
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!requireComService('REBOOT')) {
+                    return;
+                  }
+                  if (!requireWizardStep('reboot', 'REBOOT')) {
+                    return;
+                  }
+                  void runServiceWizardReboot();
+                }}
+              >
+                4) REBOOT
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!requireComService('AUTO DISCOVER IP')) {
+                    return;
+                  }
+                  if (!requireWizardStep('discover', 'AUTO DISCOVER IP')) {
+                    return;
+                  }
+                  void runServiceWizardDiscover();
+                }}
+              >
+                5) AUTO DISCOVER IP
+              </button>
+            </div>
+          </div>
+
+          <label>
             WiFi SSID
             <input type="text" value={wifiSsid} onChange={(event) => setWifiSsid(event.target.value)} />
           </label>
@@ -2398,8 +2936,32 @@ export function MonolithicDashboard({
           </label>
 
           <div className="wifi-actions">
-            <button type="button" onClick={() => void runWifiProvisioning()}>SAVE & CONNECT</button>
-            <button type="button" onClick={() => void issueSerialCommand('link_status')}>CHECK STATUS</button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!requireComService('PROVISION SAVE')) {
+                  return;
+                }
+                if (provisionWizardStep !== 'provision' && provisionWizardStep !== 'detect') {
+                  setWifiMessage(`PROVISION SAVE: sai buoc wizard (hien tai ${provisionWizardStep.toUpperCase()})`);
+                  return;
+                }
+                void runWifiProvisioning();
+              }}
+            >
+              3) PROVISION SAVE
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (!requireComService('CHECK STATUS')) {
+                  return;
+                }
+                void issueSerialCommand('link_status');
+              }}
+            >
+              CHECK STATUS
+            </button>
           </div>
 
           <div className="wifi-help">
@@ -2441,14 +3003,15 @@ export function MonolithicDashboard({
           <div className="status-row"><span>Height</span><strong>{Math.round(50 + (studioTuning.bodyHeight / 100) * 70)} mm</strong></div>
           <div className="status-row"><span>Temp</span><strong>{tempLabel}</strong></div>
           <div className="status-row"><span>WiFi</span><strong className={isWifiConnected ? 'wifi-connect-ok' : ''}>{wifiStatusLabel}</strong></div>
+          <div className="status-row"><span>Can ARM</span><strong>{capability.canArm ? 'YES' : 'NO'}</strong></div>
+          <div className="status-row"><span>Can Motion</span><strong>{capability.canMotion ? 'YES' : 'NO'}</strong></div>
           <div className="status-row"><span>RSSI</span><strong>{rssiLabel}</strong></div>
           <div className="status-row"><span>BAT</span><strong>{batteryLabel}</strong></div>
         </div>
 
         <div className={`bat-chip ${runtimeTelemetry.battery >= 0 && runtimeTelemetry.battery < 20 ? 'bat-chip-low' : ''}`}>{t.batteryShort}: {batteryLabel}</div>
 
-        {appMode !== 'field' && <div className="control-update-line">WORKSHOP MODE: keypad disabled</div>}
-        <div className="ghost-keys-wrap" style={appMode !== 'field' ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
+        <div className="ghost-keys-wrap" style={!motionEnabled ? { opacity: 0.45, pointerEvents: 'none' } : undefined}>
           <div className={`ghost-key key-w ${activeKeys.W ? 'ghost-key-active' : ''}`} role="button" tabIndex={0} onMouseDown={() => handleControlKeyDown('W')} onMouseUp={() => handleControlKeyUp('W')} onMouseLeave={() => handleControlKeyUp('W')} onTouchStart={() => handleControlKeyDown('W')} onTouchEnd={() => handleControlKeyUp('W')}>W</div>
           <div className={`ghost-key key-a ${activeKeys.A ? 'ghost-key-active' : ''}`} role="button" tabIndex={0} onMouseDown={() => handleControlKeyDown('A')} onMouseUp={() => handleControlKeyUp('A')} onMouseLeave={() => handleControlKeyUp('A')} onTouchStart={() => handleControlKeyDown('A')} onTouchEnd={() => handleControlKeyUp('A')}>A</div>
           <div className={`ghost-key key-s ${activeKeys.S ? 'ghost-key-active' : ''}`} role="button" tabIndex={0} onMouseDown={() => handleControlKeyDown('S')} onMouseUp={() => handleControlKeyUp('S')} onMouseLeave={() => handleControlKeyUp('S')} onTouchStart={() => handleControlKeyDown('S')} onTouchEnd={() => handleControlKeyUp('S')}>S</div>
@@ -2465,34 +3028,24 @@ export function MonolithicDashboard({
       <aside className="zone-beta">
         <div className="beta-header-shell">
           <div className="beta-header">
-            <select value={endpoint} onChange={(event) => setEndpoint(event.target.value)} disabled={appMode === 'field'}>
+            <select value={endpoint} onChange={(event) => setEndpoint(event.target.value)}>
               {!isDesktopRuntime && <option value="COM3">COM3</option>}
               {isDesktopRuntime && comPorts.length === 0 && <option value="">No COM</option>}
               {isDesktopRuntime && comPorts.map((port) => (
                 <option key={port.path} value={port.path}>{port.label}</option>
               ))}
             </select>
-            <button className={`connect-pill ${(appMode === 'field' ? isWifiConnected : isOnline) ? 'connect-pill-online' : ''}`} onClick={handleConnectToggle}>
-              {isConnecting
-                ? 'DANG KET NOI'
-                : appMode === 'field'
-                  ? (connectionState === 'DISCONNECTED' ? 'KET NOI WIFI' : 'NGAT WIFI')
-                  : (isOnline ? 'ONLINE' : 'KET NOI COM')}
+            <button className={`connect-pill ${isOnline ? 'connect-pill-online' : ''}`} onClick={handleComConnectToggle}>
+              {isConnecting ? 'DANG KET NOI' : (isOnline ? 'NGAT COM' : 'KET NOI COM')}
+            </button>
+            <button className={`connect-pill ${isWifiConnected ? 'connect-pill-online' : ''}`} onClick={handleWifiConnectToggle}>
+              {isConnecting ? 'DANG KET NOI' : (isWifiConnected ? 'NGAT WIFI' : 'KET NOI WIFI')}
             </button>
             <span className="ping-note">{signalNote} • FW {fwVersion} • {robotId}</span>
           </div>
 
-          <div className="segment-tabs" role="tablist" aria-label="App operating mode">
-            <button className={appMode === 'workshop' ? 'segment-active' : ''} onClick={() => switchAppMode('workshop')}>
-              WORKSHOP (COM)
-            </button>
-            <button className={appMode === 'field' ? 'segment-active' : ''} onClick={() => switchAppMode('field')}>
-              FIELD (WIFI)
-            </button>
-          </div>
-
           <div className="system-control-bar">
-            <button type="button" className="sys-btn sys-btn-arm" onClick={() => void armRobot()} disabled={appMode !== 'field' || connectionState === 'DISCONNECTED'}>ARM</button>
+            <button type="button" className="sys-btn sys-btn-arm" onClick={() => void armRobot()} disabled={!armEnabled}>ARM</button>
             <button type="button" className="sys-btn sys-btn-hold" onClick={() => void holdRobot()}>HOLD</button>
             <button type="button" className="sys-btn sys-btn-estop" onClick={() => void emergencyStop()}>E-STOP</button>
             <button type="button" className="sys-btn sys-btn-clear" onClick={() => void clearEmergency()}>CLEAR</button>
@@ -2508,8 +3061,9 @@ export function MonolithicDashboard({
 
           <div className="control-update-line">CTRL {lastControlUpdate}</div>
           <div className="control-update-line">WATCHDOG {Number.isFinite(ping) ? `${ping} / ${watchdogTimeoutMs} ms` : `-- / ${watchdogTimeoutMs} ms`}</div>
-          <div className="control-update-line">MODE {appMode.toUpperCase()} • COM mission {wifiReady ? 'DONE' : 'IN PROGRESS'}</div>
+          <div className="control-update-line">COM {isComServiceReady ? 'SERVICE READY' : 'SERVICE OFFLINE'} • WIFI {isWifiConnected ? 'RUNTIME ONLINE' : 'RUNTIME OFFLINE'}</div>
           <div className="control-update-line">LINK {connectionState} • {linkMode}</div>
+          <div className="control-update-line">CAP can_arm={capability.canArm ? '1' : '0'} can_motion={capability.canMotion ? '1' : '0'} can_service={capability.canService ? '1' : '0'}</div>
         </div>
 
         <div className="beta-workspace">

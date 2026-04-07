@@ -21,7 +21,9 @@
     "dist:win:portable": "npm run build:desktop:portable",
     "preview": "vite preview",
     "clean": "rimraf dist release",
-    "lint": "tsc --noEmit"
+    "lint": "tsc --noEmit",
+    "test": "vitest",
+    "test:run": "vitest run"
   },
   "build": {
     "appId": "com.urlab.steamplanner",
@@ -75,6 +77,7 @@
     "tsx": "^4.21.0",
     "typescript": "~5.8.2",
     "vite": "^6.2.0",
+    "vitest": "^2.1.8",
     "wait-on": "^8.0.3"
   }
 }

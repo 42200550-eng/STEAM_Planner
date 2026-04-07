@@ -25,7 +25,36 @@ app.use(express.json({ limit: '256kb' }));
 const udpHost = process.env.ROBOT_UDP_HOST || '127.0.0.1';
 const udpPort = Number(process.env.ROBOT_UDP_PORT || 9000);
 const gatewayPort = Number(process.env.GATEWAY_PORT || 8787);
-const udpReplyTimeoutMs = Math.max(50, Number(process.env.ROBOT_UDP_RESPONSE_TIMEOUT_MS || 220));
+const udpReplyTimeoutMs = Math.max(100, Number(process.env.ROBOT_UDP_RESPONSE_TIMEOUT_MS || 900));
+const udpBurstSettleMs = Math.max(80, Number(process.env.ROBOT_UDP_BURST_SETTLE_MS || 320));
+
+function normalizeTargetHost(value) {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (!normalized) {
+    return null;
+  }
+
+  // Keep validation permissive so hostnames and IPv4/IPv6 can be passed through.
+  return normalized.length <= 255 ? normalized : null;
+}
+
+function normalizeTargetPort(value) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) {
+    return null;
+  }
+
+  const normalized = Math.round(numeric);
+  if (normalized < 1 || normalized > 65535) {
+    return null;
+  }
+
+  return normalized;
+}
 
 function tryParseJson(raw) {
   try {
@@ -37,6 +66,8 @@ function tryParseJson(raw) {
 
 function forwardUdpWithOptionalReply(encoded, options = {}) {
   const awaitReply = options.awaitReply !== false;
+  const targetHost = normalizeTargetHost(options.targetHost) || udpHost;
+  const targetPort = normalizeTargetPort(options.targetPort) || udpPort;
 
   return new Promise((resolve, reject) => {
     const requestSocket = dgram.createSocket('udp4');
@@ -61,34 +92,70 @@ function forwardUdpWithOptionalReply(encoded, options = {}) {
     });
 
     let timeoutId = null;
-    if (awaitReply) {
-      timeoutId = setTimeout(() => {
+    let settleTimeoutId = null;
+    const replies = [];
+
+    const completeWithReplies = () => {
+      if (replies.length === 0) {
         finalize({
           replyTimedOut: true,
           udpReplyRaw: null,
           udpReply: null,
           replyFrom: null,
           forwardedWithoutReply: false,
+          udpReplies: [],
+          replyCount: 0,
         });
+        return;
+      }
+
+      const first = replies[0];
+      finalize({
+        replyTimedOut: false,
+        udpReplyRaw: first.raw,
+        udpReply: first.parsed,
+        replyFrom: first.replyFrom,
+        forwardedWithoutReply: false,
+        udpReplies: replies,
+        replyCount: replies.length,
+      });
+    };
+
+    if (awaitReply) {
+      timeoutId = setTimeout(() => {
+        if (settleTimeoutId !== null) {
+          clearTimeout(settleTimeoutId);
+          settleTimeoutId = null;
+        }
+        completeWithReplies();
       }, udpReplyTimeoutMs);
 
-      requestSocket.once('message', (message, rinfo) => {
-        if (timeoutId !== null) {
-          clearTimeout(timeoutId);
-        }
+      requestSocket.on('message', (message, rinfo) => {
         const raw = message.toString('utf8').trim();
-        finalize({
-          replyTimedOut: false,
-          udpReplyRaw: raw,
-          udpReply: tryParseJson(raw),
+        replies.push({
+          raw,
+          parsed: tryParseJson(raw),
           replyFrom: `${rinfo.address}:${rinfo.port}`,
-          forwardedWithoutReply: false,
         });
+
+        if (settleTimeoutId !== null) {
+          clearTimeout(settleTimeoutId);
+        }
+
+        // Keep a burst window to capture telemetry/capability frames arriving shortly after ACK.
+        settleTimeoutId = setTimeout(() => {
+          if (timeoutId !== null) {
+            clearTimeout(timeoutId);
+            timeoutId = null;
+          }
+          settleTimeoutId = null;
+          completeWithReplies();
+        }, udpBurstSettleMs);
       });
     }
 
     requestSocket.bind(0, '0.0.0.0', () => {
-      requestSocket.send(encoded, udpPort, udpHost, (error) => {
+      requestSocket.send(encoded, targetPort, targetHost, (error) => {
         if (error) {
           if (timeoutId !== null) {
             clearTimeout(timeoutId);
@@ -109,6 +176,8 @@ function forwardUdpWithOptionalReply(encoded, options = {}) {
             udpReply: null,
             replyFrom: null,
             forwardedWithoutReply: true,
+            udpReplies: [],
+            replyCount: 0,
           });
         }
       });
@@ -122,12 +191,15 @@ app.get('/api/health', (_req, res) => {
     service: 'urlab-udp-gateway',
     udpHost,
     udpPort,
+    supportsTargetOverride: true,
+    udpReplyTimeoutMs,
+    udpBurstSettleMs,
     now: Date.now(),
   });
 });
 
 app.post('/api/udp-gateway', async (req, res) => {
-  const { frame, eventName, payload, ts, awaitReply } = req.body ?? {};
+  const { frame, eventName, payload, ts, awaitReply, targetHost, targetPort } = req.body ?? {};
   const hasFrame = frame && typeof frame === 'object' && !Array.isArray(frame);
   const hasLegacyEnvelope = typeof eventName === 'string' && eventName.trim().length > 0;
 
@@ -146,19 +218,26 @@ app.post('/api/udp-gateway', async (req, res) => {
 
   const encoded = Buffer.from(JSON.stringify(packet), 'utf8');
 
+  const effectiveTargetHost = normalizeTargetHost(targetHost) || udpHost;
+  const effectiveTargetPort = normalizeTargetPort(targetPort) || udpPort;
+
   try {
     const reply = await forwardUdpWithOptionalReply(encoded, {
       awaitReply: awaitReply !== false,
+      targetHost: effectiveTargetHost,
+      targetPort: effectiveTargetPort,
     });
     res.json({
       ok: true,
-      forwardedTo: `${udpHost}:${udpPort}`,
+      forwardedTo: `${effectiveTargetHost}:${effectiveTargetPort}`,
       bytes: encoded.byteLength,
       eventName: hasFrame ? 'frame' : eventName,
       replyTimedOut: reply.replyTimedOut,
       replyFrom: reply.replyFrom,
       udpReplyRaw: reply.udpReplyRaw,
       udpReply: reply.udpReply,
+      udpReplies: reply.udpReplies,
+      replyCount: reply.replyCount,
       forwardedWithoutReply: reply.forwardedWithoutReply,
     });
   } catch (error) {

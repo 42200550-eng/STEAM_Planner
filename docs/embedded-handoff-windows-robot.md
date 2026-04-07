@@ -3,6 +3,7 @@
 ## Related specs
 - [Keepalive Contract V1](keepalive-contract-v1.md)
 - [App COM Mission Profile V1](app-com-mission-profile-v1.md)
+- [App F1-F5 Regression Pack](app-f1-f5-regression-pack.md)
 
 COM mission summary: COM is only for workshop/service operations (flash, provision, calibrate, diagnose) until Wi-Fi-ready handoff; runtime control ownership stays on Wi-Fi.
 

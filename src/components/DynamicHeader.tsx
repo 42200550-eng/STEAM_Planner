@@ -81,7 +81,7 @@ export function DynamicHeader({
               <button className={`soft-pill soft-pill-action ${isArmed ? 'soft-pill-live' : ''}`} onClick={() => onControlAction('arm')}>
                 <Power size={12} /> {t.arm}
               </button>
-              <button className="soft-pill soft-pill-action" onClick={() => onControlAction('disarm')}>
+              <button className="soft-pill soft-pill-action" onClick={() => onControlAction('hold')}>
                 {t.disarm}
               </button>
               <button className="soft-pill soft-pill-danger" onClick={() => onControlAction('estop')}>

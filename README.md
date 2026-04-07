@@ -13,6 +13,12 @@
 5. Run the app (Terminal 3):
    `npm run dev`
 
+## Run P2 Smoke Tests
+
+Execute firmware-contract smoke tests:
+
+`npm.cmd run test:run`
+
 ## UDP Gateway (Round 3+)
 
 - Frontend emits events to `/api/udp-gateway`
